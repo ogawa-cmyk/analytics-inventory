@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}一括AI分析ジョブ{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>一括AI分析</span></nav>
+{% endblock %}
+{% block body %}
+<h1 style="font-size:18px;margin:6px 0 14px">一括AI分析ジョブ</h1>
+<p class="small">プロパティ一覧画面で複数選択して「🤖 一括AI分析」を押すと、ここに新しいジョブが追加されます。<br>5日ごとのデータ更新後に「自動診断」が走り、新規アラートが出たプロパティを自動で分析します。</p>
+
+<div class="card" style="margin-bottom:14px;border-left:3px solid #6c5ce7">
+  <h2 style="color:#6c5ce7;border-bottom-color:#e8e2ff">🔁 定期自動診断</h2>
+  {% if auto_state %}
+    <p class="small">最終実行: {{ auto_state.generated_at[:19].replace('T',' ') }} UTC
+      ・ 検出アラート: {{ auto_state.flagged_count }}件
+      ・ AI分析対象: {{ auto_state.analyzed_count or 0 }}件
+      {% if auto_state.job_id %}<a class="prop" href="/bulk/{{ auto_state.job_id }}">→ 結果ジョブを見る</a>{% endif %}
+    </p>
+  {% else %}
+    <p class="small">まだ自動診断は実行されていません。5日ごとのデータ更新後に自動で動きます。</p>
+  {% endif %}
+  <button class="btn" onclick="runAutoDiag()">▶ 自動診断を今すぐ実行</button>
+  <span class="small" id="auto-status"></span>
+</div>
+
+<script>
+async function runAutoDiag(){
+  const sta = document.getElementById('auto-status');
+  sta.textContent = ' 実行中…';
+  try {
+    const r = await fetch('/api/auto_diagnose/run', {method:'POST'});
+    const d = await r.json();
+    sta.textContent = ' OK: ' + (d.flagged_count || 0) + '件検出。';
+    if(d.job_id) location.href = '/bulk/' + d.job_id;
+    else setTimeout(()=>location.reload(), 1500);
+  } catch(e){ sta.textContent = ' 失敗: ' + e.message; }
+}
+</script>
+
+{% if jobs %}
+<table>
+  <thead>
+    <tr>
+      <th>開始</th>
+      <th>種別</th>
+      <th>ラベル</th>
+      <th>モデル</th>
+      <th>状態</th>
+      <th>進捗</th>
+      <th>エラー</th>
+      <th>推定/実コスト</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for j in jobs %}
+    <tr>
+      <td class="small">{{ (j.started_at or '')[:16].replace('T',' ') }}</td>
+      <td class="small">{% if j.kind == 'auto' %}<span class="badge b-role">自動</span>{% else %}<span class="badge b-role-edit">手動</span>{% endif %}</td>
+      <td><a class="prop" href="/bulk/{{ j.job_id }}">{{ j.label or j.job_id }}</a></td>
+      <td class="small">{{ j.model }}</td>
+      <td>
+        {% if j.status == 'done' %}<span class="badge b-ok">完了</span>
+        {% elif j.status == 'running' %}<span class="badge b-role">実行中</span>
+        {% elif j.status == 'queued' %}<span class="badge b-na">待機</span>
+        {% else %}<span class="badge b-ng">{{ j.status }}</span>{% endif %}
+      </td>
+      <td>{{ j.n_done }} / {{ j.n_total }}</td>
+      <td>{{ j.n_error or 0 }}</td>
+      <td class="small">
+        {% if j.status == 'done' %}—{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="small">まだジョブはありません。</p>
+{% endif %}
+{% endblock %}

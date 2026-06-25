@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}GTMコンテナ一覧{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>GTMコンテナ</span></nav>
+{% endblock %}
+{% block body %}
+<div class="kpi-row">
+  <div class="kpi"><span>コンテナ</span><b>{{ containers|length }}</b></div>
+  <div class="kpi"><span>タグ合計</span><b>{{ containers|sum(attribute='tag_count') }}</b></div>
+  <div class="kpi"><span>GA4紐づけ済み</span><b>{{ containers|rejectattr('ga4_measurement_ids','equalto',[])|list|length }}</b></div>
+  <div class="kpi"><span>グレードA-B</span><b>{{ containers|selectattr('health_grade','in',['A','B'])|list|length }}</b></div>
+  <div class="kpi"><span>要対応(D-F)</span><b>{{ containers|selectattr('health_grade','in',['D','F'])|list|length }}</b></div>
+  <div class="kpi"><span>お気に入り</span><b>{{ containers|selectattr('ann_favorite')|list|length }}</b></div>
+</div>
+
+{% set emails = containers|map(attribute='auth_email')|unique|sort|list %}
+<div class="filters">
+  <input type="search" id="q" placeholder="検索（コンテナ名/ID/Measurement ID/タグ・トリガー・変数名）">
+  <select id="email-filter">
+    <option value="">アカウント: すべて</option>
+    {% for e in emails %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+  </select>
+  <select id="active-filter">
+    <option value="">稼働: すべて</option>
+    <option value="yes">稼働中（タグあり）</option>
+    <option value="no">未稼働（タグなし）</option>
+  </select>
+  <select id="ga4-filter">
+    <option value="">GA4連携: すべて</option>
+    <option value="yes">GA4紐づけあり</option>
+    <option value="no">GA4紐づけなし</option>
+  </select>
+  <select id="grade-filter">
+    <option value="">グレード: すべて</option>
+    {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
+  </select>
+  <select id="tag-filter">
+    <option value="">タグ: すべて</option>
+    {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+  </select>
+  <select id="fav-filter">
+    <option value="">お気に入り: すべて</option>
+    <option value="yes">お気に入りのみ</option>
+  </select>
+  <span class="small" id="match-count"></span>
+  <a href="/export/gtm.csv" class="btn" style="margin-left:auto">⬇ CSV</a>
+</div>
+
+<table id="tbl">
+  <thead>
+    <tr>
+      <th>★</th>
+      <th data-k="auth_email" data-type="str">認証Gmail</th>
+      <th data-k="account_name" data-type="str">GTMアカウント</th>
+      <th data-k="name" data-type="str">コンテナ</th>
+      <th data-k="public_id" data-type="str">Public ID</th>
+      <th data-k="score" data-type="num">スコア</th>
+      <th data-k="usage" data-type="str">用途</th>
+      <th data-k="tag_count" data-type="num">タグ</th>
+      <th data-k="trigger_count" data-type="num">トリガー</th>
+      <th data-k="variable_count" data-type="num">変数</th>
+      <th data-k="ga4" data-type="str">紐づくGA4 (MID)</th>
+      <th data-k="linked" data-type="num">GA4プロパティ</th>
+      <th data-k="tags" data-type="str">タグ</th>
+      <th data-k="download" data-type="str">JSON</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in containers %}
+    {% set names = names_by_cid.get(c.container_id, {'tags':[],'triggers':[],'variables':[]}) %}
+    {% set base = (c.name or '') ~ ' ' ~ (c.public_id or '') ~ ' ' ~ (c.ga4_measurement_ids|join(' ')) %}
+    {% set names_text = (names.tags|join('|')) ~ '|' ~ (names.triggers|join('|')) ~ '|' ~ (names.variables|join('|')) %}
+    {% set linked = cont_to_props.get(c.container_id, []) %}
+    <tr
+      data-cid="{{ c.container_id }}"
+      data-search="{{ (base ~ ' ' ~ names_text ~ ' ' ~ (c.ann_tags or [])|join(' ') ~ ' ' ~ (c.ann_note or ''))|lower }}"
+      data-email="{{ c.auth_email }}"
+      data-active="{{ 'yes' if c.tag_count and c.tag_count > 0 else 'no' }}"
+      data-ga4="{{ 'yes' if c.ga4_measurement_ids else 'no' }}"
+      data-tags="{{ (c.ann_tags or [])|join('|')|lower }}"
+      data-fav="{{ 'yes' if c.ann_favorite else 'no' }}"
+      data-grade="{{ c.health_grade }}"
+      data-tagcount="{{ c.tag_count }}"
+      data-triggercount="{{ c.trigger_count }}"
+      data-varcount="{{ c.variable_count }}">
+      <td><span class="fav-star {% if c.ann_favorite %}on{% endif %}" data-on="{{ '1' if c.ann_favorite else '0' }}" onclick="toggleFavGtm(this, '{{ c.container_id }}')">★</span></td>
+      <td class="small">{{ c.auth_email }}</td>
+      <td>{{ c.account_name }}</td>
+      <td>{% if has_detail.get(c.container_id) %}<a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
+      <td class="small">{{ c.public_id }}</td>
+      <td><span class="grade-{{ c.health_grade }}">{{ c.health_grade }}</span> {{ c.health_score }}</td>
+      <td class="small">{% for u in c.usage_context or [] %}<span class="badge b-role">{{ u }}</span>{% endfor %}</td>
+      <td>{% if c.tag_count > 0 %}<a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.tag_count }}</a>{% else %}{{ c.tag_count }}{% endif %}</td>
+      <td>{% if c.trigger_count > 0 %}<a class="prop" href="/gtm/{{ c.container_id }}/trigger">{{ c.trigger_count }}</a>{% else %}{{ c.trigger_count }}{% endif %}</td>
+      <td>{% if c.variable_count > 0 %}<a class="prop" href="/gtm/{{ c.container_id }}/variable">{{ c.variable_count }}</a>{% else %}{{ c.variable_count }}{% endif %}</td>
+      <td class="small">{% for m in c.ga4_measurement_ids %}<span class="badge b-role">{{ m }}</span>{% endfor %}</td>
+      <td class="small">
+        {% if linked %}
+          {% for p in linked[:2] %}<a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}
+          {% if linked|length > 2 %}<br><span class="small">他 {{ linked|length - 2 }}件</span>{% endif %}
+        {% else %}<span class="small">—</span>{% endif %}
+      </td>
+      <td class="small">
+        {% for t in c.ann_tags or [] %}<span class="tag-chip">{{ t }}</span>{% endfor %}
+        {% if c.ann_note %}<span class="small" title="{{ c.ann_note }}">📝</span>{% endif %}
+      </td>
+      <td class="small">
+        {% if has_detail.get(c.container_id) %}
+          <a class="prop" href="/gtm/{{ c.container_id }}/download" title="GTM公開バージョンのJSONをダウンロード">⬇</a>
+        {% else %}<span style="color:#999">—</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+const q = document.getElementById('q');
+const ef = document.getElementById('email-filter');
+const af = document.getElementById('active-filter');
+const gf = document.getElementById('ga4-filter');
+const gradef = document.getElementById('grade-filter');
+const tagf = document.getElementById('tag-filter');
+const ff = document.getElementById('fav-filter');
+const tbl = document.getElementById('tbl');
+const cnt = document.getElementById('match-count');
+const total = tbl.tBodies[0].rows.length;
+
+function applyFilter(){
+  const s = q.value.toLowerCase().trim();
+  let shown = 0;
+  for(const r of tbl.tBodies[0].rows){
+    const okS = !s || r.dataset.search.includes(s);
+    const okE = !ef.value || r.dataset.email === ef.value;
+    const okA = !af.value || r.dataset.active === af.value;
+    const okG = !gf.value || r.dataset.ga4 === gf.value;
+    const okGrade = !gradef.value || r.dataset.grade === gradef.value;
+    const okT = !tagf.value || ('|'+r.dataset.tags+'|').includes('|'+tagf.value.toLowerCase()+'|');
+    const okF = !ff.value || r.dataset.fav === ff.value;
+    const ok = okS && okE && okA && okG && okGrade && okT && okF;
+    r.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  }
+  const hasFilter = s || ef.value || af.value || gf.value || gradef.value || tagf.value || ff.value;
+  cnt.textContent = hasFilter ? `${shown} / ${total} 件` : `${total} 件`;
+}
+[q, ef, af, gf, gradef, tagf, ff].forEach(el => el.addEventListener('input', applyFilter));
+applyFilter();
+
+function showToast(msg){
+  let t = document.getElementById('toast');
+  if(!t){ t = document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+async function toggleFavGtm(el, cid){
+  const newVal = el.dataset.on !== '1';
+  try {
+    await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind:'containers', key:cid, favorite:newVal})});
+    el.dataset.on = newVal ? '1' : '0';
+    el.classList.toggle('on', newVal);
+    el.closest('tr').dataset.fav = newVal ? 'yes' : 'no';
+    showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
+  } catch(e){ showToast('失敗'); }
+}
+
+const sortDir = {};
+tbl.tHead.querySelectorAll('th').forEach((th, i) => {
+  th.style.cursor = 'pointer';
+  th.addEventListener('click', () => {
+    const dir = sortDir[i] = !sortDir[i];
+    const type = th.dataset.type || 'str';
+    const rows = [...tbl.tBodies[0].rows];
+    rows.sort((a, b) => {
+      let av, bv;
+      if(type === 'num'){
+        av = parseFloat(a.cells[i].innerText.replace(/,/g,'')) || 0;
+        bv = parseFloat(b.cells[i].innerText.replace(/,/g,'')) || 0;
+        return dir ? av - bv : bv - av;
+      }
+      av = a.cells[i].innerText.trim().toLowerCase();
+      bv = b.cells[i].innerText.trim().toLowerCase();
+      return dir ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    tbl.tHead.querySelectorAll('th').forEach(x => x.dataset.sortIcon = '');
+    th.dataset.sortIcon = dir ? '▲' : '▼';
+    tbl.tHead.querySelectorAll('th').forEach(x => {
+      const base = x.textContent.replace(/[▲▼]\s*$/, '').trimEnd();
+      x.textContent = x.dataset.sortIcon ? base + ' ' + x.dataset.sortIcon : base;
+    });
+    rows.forEach(r => tbl.tBodies[0].appendChild(r));
+  });
+});
+</script>
+{% endblock %}

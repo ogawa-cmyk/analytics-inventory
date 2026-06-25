@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% block title %}ヘルプ・用語集{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>ヘルプ・用語集</span></nav>
+{% endblock %}
+{% block body %}
+<style>
+  .toc{background:var(--g-card);border:1px solid var(--g-border);border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:13px}
+  .toc ul{margin:0;padding-left:18px;line-height:1.9}
+  .toc a{color:var(--g-primary);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .help-section{scroll-margin-top:80px}
+  .help-section h2{color:var(--g-primary-dark);font-size:18px;border-bottom:2px solid var(--g-primary-light);padding-bottom:8px;margin-top:0}
+  .help-section h3{font-size:14px;color:var(--g-text);margin:18px 0 8px}
+  dl.glossary{margin:0}
+  dl.glossary dt{font-weight:600;color:var(--g-primary-dark);margin-top:12px;font-size:13px}
+  dl.glossary dd{margin:4px 0 0 0;font-size:13px;line-height:1.7;color:var(--g-text)}
+  .breakdown-table th{font-size:11px;background:var(--g-primary-light);color:var(--g-primary-dark);padding:6px 10px}
+  .breakdown-table td{font-size:12px;padding:5px 10px}
+  .breakdown-table td.pts{text-align:right;font-weight:600;width:80px}
+  code{background:var(--g-primary-light);padding:1px 6px;border-radius:3px;font-size:12px;color:var(--g-primary-dark)}
+  kbd{background:var(--g-card);border:1px solid var(--g-border);border-bottom-width:2px;padding:2px 6px;border-radius:3px;font-size:11px;font-family:monospace;box-shadow:0 1px 0 var(--g-border)}
+</style>
+
+<h1 style="font-size:20px;margin:6px 0 14px">ヘルプ・用語集</h1>
+
+<div class="toc">
+  <b>目次</b>
+  <ul>
+    <li><a href="#about">このツールについて</a></li>
+    <li><a href="#glossary">用語集（GA4・GTM・SC・本ツール独自）</a></li>
+    <li><a href="#score-ga4">ヘルススコアの基準（GA4プロパティ）</a></li>
+    <li><a href="#score-gtm">ヘルススコアの基準（GTMコンテナ）</a></li>
+    <li><a href="#score-sc">ヘルススコアの基準（Search Consoleサイト）</a></li>
+    <li><a href="#alerts">アラート種別と判定条件</a></li>
+    <li><a href="#data-update">データ更新の仕組み</a></li>
+    <li><a href="#ai">AI分析の仕組みとコスト</a></li>
+    <li><a href="#shortcuts">キーボードショートカット・テーマ切替</a></li>
+    <li><a href="#files">ファイル・保存場所</a></li>
+    <li><a href="#troubleshoot">トラブルシューティング</a></li>
+  </ul>
+</div>
+
+<div class="card help-section" id="about">
+  <h2>このツールについて</h2>
+  <p><b>Analytics Inventory</b> は、複数のGmailアカウントが所有する <b>GA4プロパティ・GTMコンテナ・Search Consoleサイト</b> を一覧管理し、健全性スコアリング・差分検知・AI分析を行うインベントリ管理ツールです。</p>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>GA4 / GTM / SC のAPIを使い、<b>3日ごとに自動でデータ収集</b>（タスクスケジューラ）</li>
+    <li>各プロパティ・コンテナ・サイトを <b>100点満点でスコアリング</b>、アラートを自動検出</li>
+    <li>Claude APIに分析を投げ、<b>課題リストと優先度付きアクションプラン</b>を生成</li>
+    <li>各アクションには外部AIに作業を委任するためのプロンプトも同時生成</li>
+    <li>更新後の新規アラート発生プロパティを <b>自動診断</b> で即AI分析</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="glossary">
+  <h2>用語集</h2>
+
+  <h3>GA4関連</h3>
+  <dl class="glossary">
+    <dt>プロパティ (Property)</dt>
+    <dd>GA4でデータを収集・保管する単位。1サイト=1プロパティが基本。<code>property_id</code>で識別。</dd>
+
+    <dt>データストリーム (Data Stream)</dt>
+    <dd>ウェブ／iOSアプリ／Androidアプリのいずれかからのデータ収集口。1プロパティに複数設定可能。<b>Measurement ID</b>（G-XXXXX）はWebストリーム単位で発行。</dd>
+
+    <dt>キーイベント (Key Event)</dt>
+    <dd>旧称「コンバージョン」。ビジネス価値の高いイベントとしてマークしたもの。GA4管理画面では2024年10月から「キーイベント」に名称変更。</dd>
+
+    <dt>カスタムディメンション (Custom Dimension)</dt>
+    <dd>GA4標準にない属性を計測するための拡張枠。<b>スコープ</b>がEvent / User / Item / Sessionの4種類。プロパティあたり50件が上限。</dd>
+
+    <dt>カスタム指標 (Custom Metric)</dt>
+    <dd>数値型のカスタム計測。スクロール時間や購入額など。プロパティあたり50件が上限。</dd>
+
+    <dt>Measurement ID (MID)</dt>
+    <dd><code>G-XXXXXXXXXX</code>形式の識別子。GA4でデータを受け取る側のID。GTMのGA4設定タグやgtag.jsにこのIDを指定して計測が成立。</dd>
+
+    <dt>accessBindings</dt>
+    <dd>GA4 Admin APIで取得できる権限情報。Administrator権限を持つプロパティでのみ全件取得可能（Editor以下では空配列）。</dd>
+
+    <dt>eコマース計測</dt>
+    <dd><code>purchase</code> / <code>add_to_cart</code> / <code>begin_checkout</code> / <code>view_item</code>等のイベントが直近30日で1回以上発生していれば「eコマースあり」と判定。</dd>
+  </dl>
+
+  <h3>GTM関連</h3>
+  <dl class="glossary">
+    <dt>コンテナ (Container)</dt>
+    <dd>GTMでタグ・トリガー・変数をまとめる単位。基本は1サイト=1コンテナ。<code>container_id</code>（数値）と<code>Public ID</code>（GTM-XXXXXXX）の2識別子。</dd>
+
+    <dt>公開バージョン (Live Version)</dt>
+    <dd>現在実環境で配信されているコンテナのスナップショット。「公開」のたびに新バージョンIDが発行。本ツールは公開バージョンの内容のみを収集。</dd>
+
+    <dt>タグ (Tag)</dt>
+    <dd>計測コードを発火させる単位。GA4設定タグ（<code>gaawc</code>）、GA4イベントタグ（<code>gaawe</code>）、カスタムHTMLタグ（<code>html</code>）、Yahoo!広告タグなど。</dd>
+
+    <dt>トリガー (Trigger)</dt>
+    <dd>タグを「いつ・どの条件で発火させるか」を定義する単位。ページビュー、クリック、フォーム送信、カスタムイベントなど。</dd>
+
+    <dt>変数 (Variable)</dt>
+    <dd>タグやトリガーで使う動的な値の定義。データレイヤー変数、URL、Cookie値、定数など。</dd>
+
+    <dt>レガシーUA (Universal Analytics) タグ</dt>
+    <dd>2023年7月計測終了のGoogle Analytics 3世代タグ。タグタイプ<code>ua</code>。<b>即削除推奨</b>。</dd>
+
+    <dt>paused フラグ</dt>
+    <dd>タグを一時停止状態にするフラグ。本番にpausedタグが多いとガバナンスが乱れているサイン。</dd>
+  </dl>
+
+  <h3>Search Console関連</h3>
+  <dl class="glossary">
+    <dt>サイト（プロパティ）</dt>
+    <dd>Search Consoleで監視する単位。2種類: <b>URLプレフィックスプロパティ</b>（<code>https://example.com/</code>）と <b>ドメインプロパティ</b>（<code>sc-domain:example.com</code>、サブドメイン全部対象）。</dd>
+
+    <dt>権限レベル (Permission Level)</dt>
+    <dd>SC固有の権限種別: <code>siteOwner</code>（所有者）/ <code>siteFullUser</code>（フルユーザー）/ <code>siteRestrictedUser</code>（制限付き）/ <code>siteUnverifiedUser</code>（未確認）。</dd>
+
+    <dt>Click / Impression / CTR / 平均掲載順位</dt>
+    <dd>Search Consoleの4基本指標。Click=実際にクリックされた数、Impression=検索結果に表示された回数、CTR=Click÷Impression、平均掲載順位=検索結果で表示された平均的な順位。</dd>
+
+    <dt>クエリ (Query)</dt>
+    <dd>ユーザーがGoogle検索で入力した語句。プライバシー上一部マスクされる。</dd>
+
+    <dt>サイトマップ (Sitemap)</dt>
+    <dd>サイトに含まれるURL一覧をXMLで提供したファイル。クロール最適化に重要。Search Consoleで送信状況・取得日時・エラー数を確認可能。</dd>
+
+    <dt>本ツールの集計期間</dt>
+    <dd><b>直近28日</b>のClick/Impression/CTR/平均掲載順位を集計（SC APIの仕様で3日の遅延あり）。クエリ・ページの上位100件を保存。</dd>
+
+    <dt>GA4自動紐付け</dt>
+    <dd>GA4プロパティのデータストリームURLのドメインと、SCサイトのドメインを照合して自動連携検出。一致するGA4プロパティが見つかれば「GA4連携あり」表示。</dd>
+  </dl>
+
+  <h3>本ツール独自の用語</h3>
+  <dl class="glossary">
+    <dt>ヘルススコア (Health Score)</dt>
+    <dd>各プロパティ・コンテナ・サイトを0〜100点で評価した健全性指標。判定の詳細は<a href="#score-ga4">スコア基準</a>セクション参照。</dd>
+
+    <dt>グレード (A〜F)</dt>
+    <dd>A（80〜100）・B（60〜79）・C（40〜59）・D（20〜39）・F（0〜19）の5段階。A〜Bは健全、C以下は改善余地ありの目安。</dd>
+
+    <dt>アラート (Alert)</dt>
+    <dd>機械的に検出された問題点。<code>error</code>（重大・即対応）/ <code>warn</code>（注意・要改善）/ <code>info</code>（情報・参考）の3レベル。</dd>
+
+    <dt>スナップショット (Snapshot)</dt>
+    <dd>データ収集のたびに保存される時点データ。<code>data/snapshots/</code>に最大20件保持。前回比較で変化検知に使う。</dd>
+
+    <dt>委任プロンプト (Delegate Prompt)</dt>
+    <dd>AI分析が出力するアクションに付属する、外部AI（Claude/ChatGPT等）に作業を引き継ぐための完全自立型プロンプト。1,000〜2,000字程度。</dd>
+
+    <dt>自動診断 (Auto Diagnose)</dt>
+    <dd>3日ごとのデータ更新後に自動実行される機能。前回スナップショット比で新規アラート発生プロパティを最大15件AI分析し、結果ジョブを生成。</dd>
+
+    <dt>一括AI分析</dt>
+    <dd>複数プロパティをまとめてClaude APIに分析させる機能。プロパティ一覧でチェックボックス選択 → 概算確認 → ジョブ起動 → 進捗ポーリング → 結果横並び表示。</dd>
+
+    <dt>紐付き不整合</dt>
+    <dd>Measurement IDをキーにGA4プロパティとGTMコンテナを相互紐付け。「GA4にMIDがあるのに受信するGTMが見当たらない」場合は不整合として警告。</dd>
+
+    <dt>ツールタグ</dt>
+    <dd>ホームの要対応タイル左上に表示される小さな色付きラベル。<b>📊 GA4（緑）/ 🏷 GTM（紫）/ 🔍 SC（青）</b> の3種。クロス系は両色グラデーション。</dd>
+  </dl>
+</div>
+
+<div class="card help-section" id="score-ga4">
+  <h2>ヘルススコアの基準（GA4プロパティ）</h2>
+  <p>100点満点で以下の項目に配点。Data API/Admin APIから取得した実データに基づき機械的に算出。</p>
+  <table class="breakdown-table">
+    <thead><tr><th>項目</th><th>配点</th><th>判定基準</th></tr></thead>
+    <tbody>
+      <tr><td>計測中</td><td class="pts">30点</td><td>直近7日でセッション/ユーザー/イベントのいずれかが1以上</td></tr>
+      <tr><td>キーイベント設定</td><td class="pts">12〜20点</td><td>3件以上=20 / 1〜2件=12 / 0件=0</td></tr>
+      <tr><td>eコマース計測</td><td class="pts">10点</td><td>直近30日で<code>purchase</code>等のイベント発生</td></tr>
+      <tr><td>カスタムディメンション設定</td><td class="pts">5〜15点</td><td>1〜30件=15 / 31〜50件=10 / 51件以上=5</td></tr>
+      <tr><td>データストリーム存在</td><td class="pts">10点</td><td>1件以上</td></tr>
+      <tr><td>規模（Sessions 7d）</td><td class="pts">4〜15点</td><td>10K+=15 / 1K+=12 / 100+=8 / 1+=4</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:8px"><b>グレード判定</b>: A=80以上 / B=60〜79 / C=40〜59 / D=20〜39 / F=20未満</p>
+</div>
+
+<div class="card help-section" id="score-gtm">
+  <h2>ヘルススコアの基準（GTMコンテナ）</h2>
+  <p>100点満点で以下の項目に配点。コンテナのlive versionに含まれるタグ・トリガー・変数のデータに基づく。</p>
+  <table class="breakdown-table">
+    <thead><tr><th>項目</th><th>配点</th><th>判定基準</th></tr></thead>
+    <tbody>
+      <tr><td>公開バージョンあり</td><td class="pts">15点</td><td>live version IDが存在</td></tr>
+      <tr><td>稼働中（タグあり）</td><td class="pts">15点</td><td>tag_count > 0</td></tr>
+      <tr><td>GA4連携</td><td class="pts">15点</td><td>ga4_measurement_idsが1つ以上</td></tr>
+      <tr><td>GA4 Configuration タグ存在</td><td class="pts">10点</td><td><code>gaawc</code>型タグが1つ以上</td></tr>
+      <tr><td>モダンタグ（UA系の少なさ）</td><td class="pts">5〜15点</td><td>UA系=0=15 / 1〜2件=10 / 3〜5件=5 / 6件以上=0</td></tr>
+      <tr><td>整理度（paused率の低さ）</td><td class="pts">0〜10点</td><td>5%未満=10 / 15%未満=7 / 30%未満=3 / 30%以上=0</td></tr>
+      <tr><td>規模適正</td><td class="pts">2〜10点</td><td>1〜200=10 / 201〜400=5 / 401以上=2 / 0件=0</td></tr>
+      <tr><td>トリガー設定</td><td class="pts">5点</td><td>trigger_count > 0</td></tr>
+      <tr><td>変数設定</td><td class="pts">5点</td><td>variable_count > 0</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:8px"><b>レガシーUA系タグタイプ</b>: <code>ua</code> / <code>uaa</code> / <code>ytm</code> / <code>ytrl</code> / <code>flc</code> / <code>fls</code></p>
+</div>
+
+<div class="card help-section" id="score-sc">
+  <h2>ヘルススコアの基準（Search Consoleサイト）</h2>
+  <p>100点満点で以下の項目に配点。Search Console APIから取得した直近28日のデータに基づく。</p>
+  <table class="breakdown-table">
+    <thead><tr><th>項目</th><th>配点</th><th>判定基準</th></tr></thead>
+    <tbody>
+      <tr><td>sitemap登録</td><td class="pts">15点</td><td>1件以上のsitemapが処理済</td></tr>
+      <tr><td>流入規模（Click 28d）</td><td class="pts">6〜15点</td><td>1000+=15 / 100+=12 / 1+=6 / 0=0</td></tr>
+      <tr><td>インプレッション（Imp 28d）</td><td class="pts">6〜15点</td><td>10000+=15 / 1000+=12 / 100+=6 / 100未満=0</td></tr>
+      <tr><td>CTR妥当性</td><td class="pts">2〜10点</td><td>3%+=10 / 1%+=6 / 0%+=2</td></tr>
+      <tr><td>平均掲載順位</td><td class="pts">1〜10点</td><td>10位以内=10 / 20位以内=7 / 30位以内=4 / それ以下=1</td></tr>
+      <tr><td>sitemap健全性</td><td class="pts">5点</td><td>sitemapエラー0件</td></tr>
+      <tr><td>クエリ多様性</td><td class="pts">2〜10点</td><td>20件+=10 / 5件+=6 / 1件+=2</td></tr>
+      <tr><td>ページ多様性</td><td class="pts">2〜10点</td><td>20件+=10 / 5件+=6 / 1件+=2</td></tr>
+      <tr><td>GA4連携</td><td class="pts">10点</td><td>ドメイン一致するGA4プロパティが存在</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card help-section" id="alerts">
+  <h2>アラート種別と判定条件</h2>
+
+  <h3>📊 GA4 (5種)</h3>
+  <table>
+    <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge b-ng">error</span></td><td><code>untracked</code></td><td>直近7日間データなし（計測停止の可能性）</td></tr>
+      <tr><td><span class="badge b-ng">error</span></td><td><code>no_streams</code></td><td>データストリーム0件</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>api_err</code></td><td>Data APIエラー（権限不足等）</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>no_ke</code></td><td>キーイベント未設定</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>cd_overflow</code></td><td>カスタムDimが50件超</td></tr>
+    </tbody>
+  </table>
+
+  <h3>🏷 GTM (3種)</h3>
+  <table>
+    <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge b-ng">error</span></td><td><code>no_tags</code></td><td>タグが0件（稼働していない）</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>ua_left</code></td><td>レガシーUA系タグが3件以上残存</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>no_ga4</code></td><td>GA4 Measurement IDが紐づいていない</td></tr>
+    </tbody>
+  </table>
+
+  <h3>🔍 Search Console (3種)</h3>
+  <table>
+    <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge b-ng">error</span></td><td><code>sc_no_clicks</code></td><td>直近28日でClick=0（インデックス未登録の可能性）</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>sc_no_sitemap</code></td><td>sitemap未登録</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>sc_low_ctr</code></td><td>Imp 1000+でCTR 0.5%未満</td></tr>
+    </tbody>
+  </table>
+
+  <h3>クロス系 (2種)</h3>
+  <table>
+    <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>duplicate_mids</code></td><td>同じMeasurement IDが複数GTMコンテナで使用</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>mismatch</code></td><td>GA4プロパティのMIDをGTMで受けていない（gtag直設置等）</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small" style="margin-top:14px">📌 ホームの要対応タイルをクリックすると、各アラートの<b>対象一覧</b>と<b>対策方法</b>がモーダルで開きます。タブ切替で両方を確認可。</p>
+</div>
+
+<div class="card help-section" id="data-update">
+  <h2>データ更新の仕組み</h2>
+  <h3>自動更新（3日ごと）</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>Windowsタスクスケジューラの <code>GA4-Inventory-AutoRefresh</code> が3日ごとに <code>run_indexer.bat</code> を実行</li>
+    <li>すべてのアカウントを巡回し、データを <code>data/inventory.json</code> に保存</li>
+    <li>収集完了後、<code>auto_diagnose.py</code> が自動的に走り、新規アラート発生プロパティを最大15件AI分析</li>
+    <li>所要時間: 20〜45分（プロパティ数・SCサイト数に依存）</li>
+  </ul>
+
+  <h3>手動更新</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>ヘッダ右上の「<b>⟳ 更新</b>」ボタンから即実行</li>
+    <li>進捗パネルが自動表示: <b>進捗バー / 経過時間 / 残り時間（ETA） / 処理速度 / 現在処理中</b></li>
+    <li>ステータス表示をクリックで進捗パネルの開閉可</li>
+    <li>5秒ごとに自動更新、完了で自動リロード</li>
+  </ul>
+
+  <h3>スナップショット保存</h3>
+  <p style="font-size:13px">収集のたびに <code>data/snapshots/{timestamp}.json</code> に当時の状態を保存。<b>最新20件まで</b>保持。プロパティ詳細での前回比差分表示に使用。</p>
+
+  <h3>スケジュール変更</h3>
+  <p style="font-size:13px">PowerShell/cmdで間隔変更可:</p>
+  <pre style="font-size:11px">schtasks /Delete /TN GA4-Inventory-AutoRefresh /F
+schtasks /Create /TN GA4-Inventory-AutoRefresh /TR "C:\Users\ogawa\GA4-Inventory\run_indexer.bat" /SC DAILY /MO 3 /ST 03:00 /F</pre>
+</div>
+
+<div class="card help-section" id="ai">
+  <h2>AI分析の仕組みとコスト</h2>
+  <h3>使用モデルとコスト目安</h3>
+  <table>
+    <thead><tr><th>モデル</th><th>用途</th><th>1分析あたり目安</th></tr></thead>
+    <tbody>
+      <tr><td><code>claude-sonnet-4-6</code></td><td>標準分析（既定）</td><td>$0.08〜0.10 / 約12円</td></tr>
+      <tr><td><code>claude-opus-4-8</code></td><td>深い分析</td><td>$0.40〜0.45 / 約65円</td></tr>
+    </tbody>
+  </table>
+
+  <h3>分析の3つの実行方法</h3>
+  <ol style="font-size:13px;line-height:1.9">
+    <li><b>個別AI分析</b>: プロパティ詳細・GTMコンテナ詳細の「🤖 AI分析」セクションから1件ずつ実行</li>
+    <li><b>一括AI分析</b>: プロパティ一覧でチェックボックス選択 → 「🤖 一括AI分析」ボタン → モデル選択 → 概算確認 → ジョブ起動</li>
+    <li><b>自動診断</b>: 3日ごとのデータ更新後に新規アラート発生プロパティを最大15件自動分析（または「分析」ドロップダウン→「自動診断を実行」で手動起動）</li>
+  </ol>
+
+  <h3>分析対象として送信される情報</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>プロパティ基本情報（名前・ID・業種・タイムゾーン・通貨・自分のロール）</li>
+    <li>ヘルススコアとグレード</li>
+    <li>計測状況（直近7日の Sessions / Events / Tracked判定）</li>
+    <li>データストリーム一覧（Measurement ID込み）</li>
+    <li>キーイベント、カスタムDim/Metric一覧</li>
+    <li>eコマース検出状況</li>
+    <li>直近30日のイベント上位20件（回数・ユニークユーザー数）</li>
+    <li>紐づくGTMコンテナ</li>
+  </ul>
+  <p class="small">サイト訪問データそのものは送信しません。設定情報と集計済みイベント名・件数のみ。</p>
+
+  <h3>AI出力の構造</h3>
+  <p style="font-size:13px">JSON形式で以下を返します:</p>
+  <ul style="font-size:13px;line-height:1.8">
+    <li><b>summary</b>: 2〜3行の総合所見</li>
+    <li><b>issues[]</b>: 課題リスト（最大8件）。severity（high/medium/low）・category・title・description</li>
+    <li><b>action_plan[]</b>: アクションプラン（最大6件）。priority・title・description・estimated_effort・delegate_to_ai・delegate_prompt</li>
+  </ul>
+
+  <h3>過去履歴の保存</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>GA4: <code>data/ai_runs/{property_id}/{timestamp}.json</code></li>
+    <li>GTM: <code>data/ai_gtm_runs/{container_id}/{timestamp}.json</code></li>
+    <li>一括ジョブ: <code>data/bulk_jobs/{job_id}.json</code></li>
+    <li>各プロパティ・コンテナごとに最新10回分を保持</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="shortcuts">
+  <h2>キーボードショートカット・テーマ切替</h2>
+
+  <h3>ナビゲーションショートカット</h3>
+  <table>
+    <thead><tr><th>キー</th><th>動作</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>g</kbd> <kbd>h</kbd></td><td>ホーム</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>p</kbd></td><td>GA4プロパティ一覧</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>g</kbd></td><td>GTMコンテナ一覧</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>s</kbd></td><td>Search Console</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>a</kbd></td><td>一括AI分析（/bulk）</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>u</kbd></td><td>使い方</td></tr>
+      <tr><td><kbd>?</kbd></td><td>ヘルプ</td></tr>
+      <tr><td><kbd>/</kbd></td><td>検索ボックスフォーカス</td></tr>
+    </tbody>
+  </table>
+  <p class="small">入力フィールドにフォーカス中は無効になります。</p>
+
+  <h3>テーマ切替（ライト ⇔ ダーク）</h3>
+  <p style="font-size:13px">ヘッダ右上の <b>🌓</b> ボタンクリックで切替。設定はCookieに保存され、次回アクセス時も維持されます。</p>
+
+  <h3>表示密度</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>ホームは <b>4列ヘルスサマリー</b>（1280px以下で2×2、760px以下で1列）</li>
+    <li>詳細ページは <b>右サイドにスティッキー目次</b>（1024px以下で非表示）</li>
+    <li>860px以下でハンバーガーメニュー化</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="files">
+  <h2>ファイル・保存場所</h2>
+  <table>
+    <thead><tr><th>パス</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>data/inventory.json</code></td><td>全プロパティ・コンテナ・サイトの最新サマリー</td></tr>
+      <tr><td><code>data/details/{pid}.json</code></td><td>GA4プロパティの詳細データ</td></tr>
+      <tr><td><code>data/gtm_details/{cid}.json</code></td><td>GTMコンテナの公開バージョン全データ</td></tr>
+      <tr><td><code>data/sc_details/{hash}.json</code></td><td>Search Consoleサイトの詳細（クエリ・ページ・sitemap等）</td></tr>
+      <tr><td><code>data/snapshots/{ts}.json</code></td><td>過去20回分のスナップショット</td></tr>
+      <tr><td><code>data/ai_runs/{pid}/{ts}.json</code></td><td>プロパティのAI分析履歴</td></tr>
+      <tr><td><code>data/ai_gtm_runs/{cid}/{ts}.json</code></td><td>コンテナのAI分析履歴</td></tr>
+      <tr><td><code>data/bulk_jobs/{job_id}.json</code></td><td>一括AI分析ジョブの進捗・結果</td></tr>
+      <tr><td><code>data/auto_diagnose_latest.json</code></td><td>最新の自動診断の状態</td></tr>
+      <tr><td><code>data/annotations.json</code></td><td>お気に入り・タグ・メモ</td></tr>
+      <tr><td><code>tokens/{email}.json</code></td><td>OAuthリフレッシュトークン（gitignore）</td></tr>
+      <tr><td><code>.env</code></td><td><code>ANTHROPIC_API_KEY</code>（gitignore）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>主要スクリプト</h3>
+  <table>
+    <thead><tr><th>ファイル</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>indexer.py</code></td><td>全データ収集（GA4・GTM・SC）</td></tr>
+      <tr><td><code>auto_diagnose.py</code></td><td>新規アラート検出+自動AI分析</td></tr>
+      <tr><td><code>collect_sc_only.py</code></td><td>SCのみ再収集（API有効化後等に）</td></tr>
+      <tr><td><code>retry_errors.py</code></td><td>収集エラーをピンポイントでリトライ</td></tr>
+      <tr><td><code>start_server.bat</code> / <code>start_server_silent.bat</code></td><td>サーバ起動</td></tr>
+      <tr><td><code>stop_server.bat</code></td><td>8788ポート使用中のプロセスをkill</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card help-section" id="troubleshoot">
+  <h2>トラブルシューティング</h2>
+
+  <h3>サーバが起動しない / アクセスできない</h3>
+  <p style="font-size:13px">デスクトップの「GA4 Inventory起動.bat」をダブルクリック、もしくは <code>start_server_silent.bat</code> を実行。8788ポート競合時は <code>stop_server.bat</code> で既存プロセスをkill。</p>
+
+  <h3>AI分析が失敗する（JSON解析失敗）</h3>
+  <p style="font-size:13px">Claude APIの稀な空応答が原因のことが多い。2回まで自動リトライしますが、失敗する場合はOpus 4.8に切り替えて再実行を。エラーレスポンスは <code>data/ai_runs/{pid}/{ts}-error.json</code> に保存。</p>
+
+  <h3>権限不明（my_roles が空）</h3>
+  <p style="font-size:13px">該当プロパティで自分がAdministrator権限を持っていないと <code>accessBindings.list</code> APIが呼べないGoogleの仕様。実際の権限はGA4管理画面で確認。</p>
+
+  <h3>GTM 429エラー</h3>
+  <p style="font-size:13px">Tag Manager APIのレート制限。<code>retry_errors.py</code> でリトライ可能（バックオフ実装済）。</p>
+
+  <h3>SC収集が0件</h3>
+  <p style="font-size:13px">Google Cloud Console で <b>Search Console API</b> が有効化されているか確認。詳細はSC一覧ページの未収集メッセージ参照。</p>
+
+  <h3>自動起動が動かない</h3>
+  <p style="font-size:13px">Windowsスタートアップフォルダ方式のため、PCログイン時にのみ発火。設定後にログアウト/ログインを済ませる必要があります。</p>
+
+  <h3>ヘッダのエラー件数をクリック</h3>
+  <p style="font-size:13px">→ <code>/errors</code> ページに遷移し、収集エラーの詳細（ステージ別・Gmail別・対象別）を確認可。</p>
+</div>
+
+{% endblock %}

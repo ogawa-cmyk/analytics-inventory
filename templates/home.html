@@ -1,0 +1,772 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード{% endblock %}
+{% block body %}
+
+<style>
+  .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+  @media (max-width:1280px){.health-grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:760px){.health-grid{grid-template-columns:1fr}}
+  .h-card{background:var(--g-card);border-radius:8px;padding:14px 16px;box-shadow:var(--shadow-sm);border:1px solid var(--g-border);border-left:4px solid var(--g-primary)}
+  .h-card.gtm{border-left-color:#6c5ce7}
+  .h-card.sc{border-left-color:#0288d1}
+  .h-card.ops{border-left-color:#ffa726}
+  .h-card h3{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--g-primary)}
+  .h-card.gtm h3{color:#6c5ce7}
+  .h-card.sc h3{color:#0288d1}
+  .h-card.ops h3{color:#bf6b00}
+  .h-card .top-row{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .h-card .num{font-size:30px;font-weight:700;color:var(--g-primary);line-height:1}
+  .h-card.gtm .num{color:#6c5ce7}
+  .h-card.sc .num{color:#0288d1}
+  .h-card.ops .num{color:#bf6b00}
+  .h-card .lbl{font-size:11px;color:var(--g-text-muted)}
+  .h-card .avg{margin-left:auto;font-size:11px;color:var(--g-text-muted)}
+  .h-card .avg b{font-size:15px}
+  .grade-bar{display:flex;height:22px;border-radius:4px;overflow:hidden;border:1px solid var(--g-border);margin-bottom:8px}
+  .grade-bar > div{text-align:center;font-size:10px;color:#fff;font-weight:700;line-height:22px;white-space:nowrap;overflow:visible;min-width:0;transition:flex-basis .25s;position:relative}
+  .grade-bar > div:hover{filter:brightness(1.1)}
+  .grade-legend{display:flex;gap:6px;font-size:11px;flex-wrap:wrap;margin-bottom:8px}
+  .grade-legend > span{padding:2px 7px;border-radius:3px;color:#fff;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+  .grade-legend > span.zero{opacity:.45}
+  .grade-legend > span .l{font-size:10px;opacity:.85}
+  .h-card .stats{display:flex;gap:10px;font-size:11px;flex-wrap:wrap}
+  .h-card .stats span{color:var(--g-text-muted)}
+  .h-card .stats b{color:var(--g-text)}
+
+  .alert-tile{cursor:pointer;padding:9px 12px;border-radius:5px;transition:transform .12s,box-shadow .12s;border-left:3px solid var(--g-warn);background:var(--g-warn-bg);font-size:12px;line-height:1.4;position:relative;padding-top:24px}
+  .alert-tile:hover{transform:translateY(-1px);box-shadow:var(--shadow-md)}
+  .alert-tile.severe{border-left-color:var(--g-error);background:var(--g-error-bg)}
+  .alert-tile .label{font-size:10px;color:var(--g-text-muted);margin-top:1px}
+  .alert-tile::after{content:" ›";float:right;color:var(--g-primary);font-size:13px}
+  .tool-tag{position:absolute;top:6px;left:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.04em;color:#fff;display:inline-flex;align-items:center;gap:3px}
+  .tool-tag.ga4{background:var(--g-primary)}
+  .tool-tag.gtm{background:#6c5ce7}
+  .tool-tag.sc{background:#0288d1}
+  .tool-tag.cross{background:linear-gradient(90deg,var(--g-primary) 0%,var(--g-primary) 50%,#6c5ce7 50%,#6c5ce7 100%)}
+
+  .qa-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0 0;margin-top:10px;border-top:1px solid var(--g-border)}
+
+  details.section{background:var(--g-card);border:1px solid var(--g-border);border-radius:8px;margin-bottom:10px;box-shadow:var(--shadow-sm)}
+  details.section[open]{border-color:var(--g-primary)}
+  details.section > summary{padding:12px 18px;cursor:pointer;font-weight:600;font-size:14px;color:var(--g-primary-dark);display:flex;align-items:center;gap:8px;list-style:none}
+  details.section > summary::before{content:"▶";font-size:10px;color:var(--g-primary);transition:transform .15s;display:inline-block}
+  details.section[open] > summary::before{transform:rotate(90deg)}
+  details.section > summary:hover{background:var(--g-primary-light)}
+  details.section > summary .count{margin-left:auto;font-size:11px;color:var(--g-text-muted);font-weight:normal}
+  .section-body{padding:8px 18px 18px}
+
+  .pill-tabs{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--g-border)}
+  .pill-tabs button{background:transparent;border:none;padding:7px 14px;cursor:pointer;font-size:13px;color:var(--g-text-muted);border-bottom:2px solid transparent;font-family:inherit}
+  .pill-tabs button.active{color:var(--g-primary);border-bottom-color:var(--g-primary);font-weight:600}
+  .pill-pane{display:none}
+  .pill-pane.active{display:block}
+</style>
+
+{# ====================================================================
+   Section 1: ヒーロー（常時表示）
+   ==================================================================== #}
+
+{% if duplicate_mids and (alerts.error_props or gtm_alerts.error_count) %}
+{% endif %}
+
+<div class="health-grid">
+
+  {# --- GA4 --- #}
+  <div class="h-card">
+    <h3>GA4 ヘルス</h3>
+    <div class="top-row">
+      <span class="num">{{ properties|length }}</span>
+      <span class="lbl">プロパティ</span>
+      <span class="avg">平均 <b>{{ avg_score }}</b>/100</span>
+    </div>
+    {% set ga4_total = (grade_dist.values()|sum) or 1 %}
+    <div class="grade-bar">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = grade_dist.get(g, 0) %}{% if n > 0 %}{% set pct = n / ga4_total * 100 %}
+        <div class="grade-{{ g }}" style="flex:{{ n }} 0 0" title="{{ g }}: {{ n }}件 ({{ '%.1f' % pct }}%)">{{ '%.0f' % pct if pct >= 1 else '%.1f' % pct }}%</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="grade-legend">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = grade_dist.get(g, 0) %}
+        <span class="grade-{{ g }}{% if n == 0 %} zero{% endif %}"><span class="l">{{ g }}</span> {{ n }}</span>
+      {% endfor %}
+    </div>
+    <div class="stats">
+      <span>計測中 <b>{{ n_tracked }}</b></span>
+      <span>EC <b>{{ n_ecom }}</b></span>
+      <span>要対応 <b style="color:var(--g-error)">{{ alerts.error_props + alerts.warn_props }}</b></span>
+    </div>
+  </div>
+
+  {# --- GTM --- #}
+  <div class="h-card gtm">
+    <h3>GTM ヘルス</h3>
+    <div class="top-row">
+      <span class="num">{{ containers|length }}</span>
+      <span class="lbl">コンテナ</span>
+      <span class="avg">平均 <b>{{ gtm_avg_score }}</b>/100</span>
+    </div>
+    {% set gtm_total = (gtm_grade_dist.values()|sum) or 1 %}
+    <div class="grade-bar">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = gtm_grade_dist.get(g, 0) %}{% if n > 0 %}{% set pct = n / gtm_total * 100 %}
+        <div class="grade-{{ g }}" style="flex:{{ n }} 0 0" title="{{ g }}: {{ n }}件 ({{ '%.1f' % pct }}%)">{{ '%.0f' % pct if pct >= 1 else '%.1f' % pct }}%</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="grade-legend">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = gtm_grade_dist.get(g, 0) %}
+        <span class="grade-{{ g }}{% if n == 0 %} zero{% endif %}"><span class="l">{{ g }}</span> {{ n }}</span>
+      {% endfor %}
+    </div>
+    <div class="stats">
+      <span>稼働 <b>{{ n_gtm_active }}</b></span>
+      <span>GA4連携 <b>{{ n_gtm_ga4 }}</b></span>
+      <span>UA残存 <b style="color:var(--g-error)">{{ n_gtm_ua }}</b></span>
+    </div>
+  </div>
+
+  {# --- Search Console --- #}
+  <div class="h-card sc">
+    <h3>SC ヘルス</h3>
+    <div class="top-row">
+      <span class="num">{{ sc_sites|length }}</span>
+      <span class="lbl">サイト</span>
+      {% if sc_sites %}<span class="avg">平均 <b>{{ sc_avg_score }}</b>/100</span>{% endif %}
+    </div>
+    {% if sc_sites %}
+    {% set sc_total = (sc_grade_dist.values()|sum) or 1 %}
+    <div class="grade-bar">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = sc_grade_dist.get(g, 0) %}{% if n > 0 %}{% set pct = n / sc_total * 100 %}
+        <div class="grade-{{ g }}" style="flex:{{ n }} 0 0" title="{{ g }}: {{ n }}件 ({{ '%.1f' % pct }}%)">{{ '%.0f' % pct if pct >= 1 else '%.1f' % pct }}%</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="grade-legend">
+      {% for g in ['A','B','C','D','F'] %}
+        {% set n = sc_grade_dist.get(g, 0) %}
+        <span class="grade-{{ g }}{% if n == 0 %} zero{% endif %}"><span class="l">{{ g }}</span> {{ n }}</span>
+      {% endfor %}
+    </div>
+    <div class="stats">
+      <span>Click <b>{{ '{:,}'.format(sc_total_clicks) }}</b></span>
+      <span>Imp <b>{{ '{:,}'.format(sc_total_imps) }}</b></span>
+      <span>要対応 <b style="color:var(--g-error)">{{ sc_alerts_summary.error_count + sc_alerts_summary.warn_count }}</b></span>
+    </div>
+    {% else %}
+    <p class="small" style="margin:8px 0 0">未収集 — <a class="prop" href="/search-console">設定方法</a></p>
+    {% endif %}
+  </div>
+
+  {# --- Operations --- #}
+  <div class="h-card ops">
+    <h3>運用状況</h3>
+    <div class="top-row">
+      <span class="num">{{ by_email|length }}</span>
+      <span class="lbl">認証Gmail</span>
+    </div>
+    <p class="small" style="margin:0 0 4px">
+      最終更新: <b>{% if inv.generated_at %}{{ inv.generated_at[:16].replace('T',' ') }}{% else %}未収集{% endif %}</b>
+    </p>
+    <p class="small" style="margin:0 0 4px">スナップショット <b>{{ snapshot_count }}</b> 件</p>
+    <p class="small" style="margin:0">🤖 AI分析: GA4 <b>{{ ai_cov_prop }}</b>/{{ properties|length }} ・ GTM <b>{{ ai_cov_gtm }}</b>/{{ containers|length }}</p>
+    {% if inv.error_count %}<p class="small" style="margin:4px 0 0;color:var(--g-error)">⚠ <a class="prop" href="/errors">収集エラー {{ inv.error_count }}件</a></p>{% endif %}
+  </div>
+
+</div>
+
+{# ====================================================================
+   今日の要対応 + クイックアクション
+   ==================================================================== #}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--g-error)">
+  <h2 style="color:var(--g-error);border-bottom-color:#ffcdd2">🚨 今日の要対応</h2>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-bottom:12px">
+    {% if alerts.issues.untracked %}
+      <div class="alert-tile severe" onclick="showAlertDetails('untracked','プロパティで計測停止')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.untracked }}件</b>のプロパティで計測停止<div class="label">直近7日でデータなし</div></div>
+    {% endif %}
+    {% if alerts.issues.no_streams %}
+      <div class="alert-tile severe" onclick="showAlertDetails('no_streams','ストリーム未設定')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.no_streams }}件</b>でデータストリーム0件<div class="label">計測設定が未完了</div></div>
+    {% endif %}
+    {% if alerts.issues.api_err %}
+      <div class="alert-tile" onclick="showAlertDetails('api_err','Data API取得エラー')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.api_err }}件</b>でAPIエラー<div class="label">権限不足など</div></div>
+    {% endif %}
+    {% if alerts.issues.no_ke %}
+      <div class="alert-tile" onclick="showAlertDetails('no_ke','キーイベント未設定')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.no_ke }}件</b>でキーイベント未設定<div class="label">CV計測が不完全</div></div>
+    {% endif %}
+    {% if alerts.issues.cd_overflow %}
+      <div class="alert-tile" onclick="showAlertDetails('cd_overflow','カスタムDim過多')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.cd_overflow }}件</b>でCD 50件超<div class="label">上限・要整理</div></div>
+    {% endif %}
+    {% if gtm_alerts.issues.no_tags %}
+      <div class="alert-tile severe" onclick="showAlertDetails('no_tags','タグ0件のGTM')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.no_tags }}件</b>のGTMでタグ0<div class="label">稼働していない</div></div>
+    {% endif %}
+    {% if gtm_alerts.issues.ua_left %}
+      <div class="alert-tile" onclick="showAlertDetails('ua_left','UAタグ残存')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.ua_left }}件</b>のGTMでUAタグ残存<div class="label">即削除推奨</div></div>
+    {% endif %}
+    {% if gtm_alerts.issues.no_ga4 %}
+      <div class="alert-tile" onclick="showAlertDetails('no_ga4','GTM GA4未連携')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.no_ga4 }}件</b>のGTMでGA4未連携<div class="label">Measurement ID未設定</div></div>
+    {% endif %}
+    {% if sc_alerts_summary.issues.no_clicks %}
+      <div class="alert-tile severe" onclick="showAlertDetails('sc_no_clicks','SC Click=0')"><span class="tool-tag sc">🔍 SC</span><b>{{ sc_alerts_summary.issues.no_clicks }}件</b>のSCサイトでClick 0<div class="label">流入なし</div></div>
+    {% endif %}
+    {% if sc_alerts_summary.issues.no_sitemap %}
+      <div class="alert-tile" onclick="showAlertDetails('sc_no_sitemap','sitemap未登録')"><span class="tool-tag sc">🔍 SC</span><b>{{ sc_alerts_summary.issues.no_sitemap }}件</b>のSCでsitemap未登録<div class="label">クロール最適化の余地</div></div>
+    {% endif %}
+    {% if sc_alerts_summary.issues.low_ctr %}
+      <div class="alert-tile" onclick="showAlertDetails('sc_low_ctr','低CTR(0.5%未満)')"><span class="tool-tag sc">🔍 SC</span><b>{{ sc_alerts_summary.issues.low_ctr }}件</b>のSCでCTR極低<div class="label">タイトル・メタ改善余地</div></div>
+    {% endif %}
+    {% if duplicate_mids %}
+      <div class="alert-tile" onclick="showAlertDetails('duplicate_mids','Measurement ID重複')"><span class="tool-tag cross">🏷 GTM</span><b>{{ duplicate_mids|length }}件</b>のMeasurement ID重複<div class="label">誤設定の可能性</div></div>
+    {% endif %}
+    {% if mismatch_props %}
+      <div class="alert-tile" onclick="showAlertDetails('mismatch','GA4↔GTM紐付き不整合')"><span class="tool-tag cross">📊 GA4 × 🏷 GTM</span><b>{{ mismatch_props|length }}件</b>のGA4でGTM紐付け不整合<div class="label">gtag直設置等</div></div>
+    {% endif %}
+  </div>
+
+  <div class="qa-row">
+    <span class="small" style="margin-right:4px">クイックアクション:</span>
+    <button class="btn" onclick="quickRefresh()" data-tip="全アカウントのGA4・GTM・Search Consoleを再収集します。20〜45分。">▶ データ更新</button>
+    <button class="btn" onclick="quickAutoDiag()" data-tip="新規アラート発生プロパティを最大15件AI分析。所要5〜15分・約100〜300円。">🤖 自動診断</button>
+    <button class="btn ai" onclick="quickBulkAlerted()" data-tip="アラート分のプロパティを一括AI分析。実行前にコスト確認可。Sonnet 4.6で1件約12円。">⚡ アラート一括AI分析</button>
+    <a href="/export/properties.csv" class="btn" data-tip="GA4プロパティ一覧をCSV出力">⬇ GA4 CSV</a>
+    <a href="/export/gtm.csv" class="btn" data-tip="GTMコンテナ一覧をCSV出力">⬇ GTM CSV</a>
+    <span class="small" id="action-status" style="margin-left:8px"></span>
+  </div>
+</div>
+
+{# ====================================================================
+   Section 2: 折りたたみカード（デフォルト閉）
+   ==================================================================== #}
+
+{# --- 📈 最近の変化 --- #}
+<details class="section">
+  <summary>📈 最近の変化（前回スナップショット比）<span class="count">{{ recent_changes|length }} 件</span></summary>
+  <div class="section-body">
+    {% if recent_changes %}
+    <table>
+      <thead><tr><th>プロパティ</th><th>変化</th></tr></thead>
+      <tbody>
+      {% for r in recent_changes %}
+        <tr>
+          <td><a class="prop" href="/property/{{ r.prop.property_id }}">{{ r.prop.display_name }}</a><br><span class="small">{{ r.prop.auth_email }}</span></td>
+          <td class="small">
+            {% if r.diff.sessions_7d %}
+              {% set d = r.diff.sessions_7d %}
+              Sessions: {{ '{:,}'.format(d.previous) }} → {{ '{:,}'.format(d.current) }}
+              <span class="{% if d.delta > 0 %}diff-up{% else %}diff-down{% endif %}">({{ '%+d' % d.delta }})</span>
+            {% endif %}
+            {% if r.diff.key_events_added %}<br>キーイベント追加: {{ r.diff.key_events_added|join(', ') }}{% endif %}
+            {% if r.diff.key_events_removed %}<br><span class="diff-down">キーイベント削除: {{ r.diff.key_events_removed|join(', ') }}</span>{% endif %}
+            {% if r.diff.tracking_changed %}<br><span class="diff-down">計測状態変化</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="small">スナップショット2件以上ないと変化を表示できません（現在: {{ snapshot_count }}）</p>
+    {% endif %}
+  </div>
+</details>
+
+{# --- 🚨 要対応 TOP10 タブ式 --- #}
+<details class="section">
+  <summary>🚨 要対応 TOP10<span class="count">GA4 {{ error_props|length }} / GTM {{ gtm_error_conts|length }} / SC {{ sc_top_trouble|length }}</span></summary>
+  <div class="section-body">
+    <div class="pill-tabs">
+      <button class="active" data-pane="trouble-ga4" onclick="showPane(this)">GA4 ({{ error_props|length }})</button>
+      <button data-pane="trouble-gtm" onclick="showPane(this)">GTM ({{ gtm_error_conts|length }})</button>
+      <button data-pane="trouble-sc" onclick="showPane(this)">SC ({{ sc_top_trouble|length }})</button>
+    </div>
+
+    <div class="pill-pane active" id="trouble-ga4">
+      {% if error_props %}
+      <table>
+        <thead><tr><th>プロパティ</th><th>スコア</th><th>問題</th></tr></thead>
+        <tbody>
+        {% for p in error_props %}
+          <tr>
+            <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a><br><span class="small">{{ p.auth_email }}</span></td>
+            <td><span class="grade-{{ p.health_grade }}">{{ p.health_grade }}</span> {{ p.health_score }}</td>
+            <td class="small">
+              {% if p.is_tracked == False %}<span class="alert-error">●未計測</span>{% endif %}
+              {% if p.stream_count == 0 %}<span class="alert-error">●ストリーム無</span>{% endif %}
+              {% if p.key_event_count == 0 %}<span class="alert-warn">●キーイベント無</span>{% endif %}
+              {% if p.data_api_ok == False %}<span class="alert-error">●APIエラー</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="small">問題なし 👍</p>{% endif %}
+    </div>
+
+    <div class="pill-pane" id="trouble-gtm">
+      {% if gtm_error_conts %}
+      <table>
+        <thead><tr><th>コンテナ</th><th>スコア</th><th>問題</th></tr></thead>
+        <tbody>
+        {% for c in gtm_error_conts %}
+          <tr>
+            <td><a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a><br><span class="small">{{ c.account_name }}</span></td>
+            <td><span class="grade-{{ c.health_grade }}">{{ c.health_grade }}</span> {{ c.health_score }}</td>
+            <td class="small">
+              {% if c.tag_count == 0 %}<span class="alert-error">●タグ0</span>{% endif %}
+              {% if not c.ga4_measurement_ids %}<span class="alert-warn">●GA4無</span>{% endif %}
+              {% if c._score_summary and c._score_summary.ua_count >= 3 %}<span class="alert-warn">●UA残存{{ c._score_summary.ua_count }}</span>{% endif %}
+              {% if c._score_summary and c._score_summary.tag_total > 400 %}<span class="alert-warn">●規模過大</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="small">問題なし 👍</p>{% endif %}
+    </div>
+
+    <div class="pill-pane" id="trouble-sc">
+      {% if sc_top_trouble %}
+      <table>
+        <thead><tr><th>サイト</th><th>スコア</th><th>Click(28d)</th><th>問題</th></tr></thead>
+        <tbody>
+        {% for s in sc_top_trouble %}
+          <tr>
+            <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a><br><span class="small">{{ s.auth_email }}</span></td>
+            <td><span class="grade-{{ s.health_grade }}">{{ s.health_grade }}</span> {{ s.health_score }}</td>
+            <td>{{ '{:,}'.format(s.clicks_28d) }}</td>
+            <td class="small">
+              {% if s.clicks_28d == 0 %}<span class="alert-error">●流入0</span>{% endif %}
+              {% if s.sitemap_count == 0 %}<span class="alert-warn">●sitemap無</span>{% endif %}
+              {% if s.sitemap_errors %}<span class="alert-warn">●sitemapエラー</span>{% endif %}
+              {% if not s.has_ga4_link %}<span class="alert-info">●GA4未連携</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="small">問題なし 👍</p>{% endif %}
+    </div>
+  </div>
+</details>
+
+{# --- 🤖 AI分析の活用状況 --- #}
+<details class="section">
+  <summary>🤖 AI分析の活用状況<span class="count">カバレッジ GA4 {{ ai_cov_prop }}件 / GTM {{ ai_cov_gtm }}件</span></summary>
+  <div class="section-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div>
+        <p class="small" style="margin:0 0 4px;font-weight:600">直近の自動診断</p>
+        {% if auto_state %}
+          <p style="margin:0;font-size:13px">
+            {{ auto_state.generated_at[:16].replace('T',' ') }} UTC<br>
+            新規アラート <b>{{ auto_state.flagged_count }}</b>件 ・ AI分析 <b>{{ auto_state.analyzed_count or 0 }}</b>件
+          </p>
+          {% if auto_state.job_id %}
+            <p style="margin:6px 0 0"><a class="prop" href="/bulk/{{ auto_state.job_id }}">→ 結果ジョブを見る</a></p>
+          {% endif %}
+        {% else %}<p class="small">未実行</p>{% endif %}
+      </div>
+      <div>
+        <p class="small" style="margin:0 0 4px;font-weight:600">AI分析カバレッジ</p>
+        <p style="margin:0;font-size:13px">
+          GA4: <b>{{ ai_cov_prop }}</b> / {{ properties|length }} 件
+          ({{ '%.0f' % (ai_cov_prop / properties|length * 100 if properties|length else 0) }}%)
+        </p>
+        <p style="margin:2px 0 0;font-size:13px">
+          GTM: <b>{{ ai_cov_gtm }}</b> / {{ containers|length }} 件
+          ({{ '%.0f' % (ai_cov_gtm / containers|length * 100 if containers|length else 0) }}%)
+        </p>
+      </div>
+      <div>
+        <p class="small" style="margin:0 0 4px;font-weight:600">課題カテゴリ TOP5</p>
+        {% if top_categories %}
+          <table style="font-size:11px"><tbody>
+          {% for tc in top_categories %}
+            <tr><td style="padding:2px 4px">{{ loop.index }}. {{ tc.category }}</td>
+            <td style="padding:2px 4px" class="small">{{ tc.count }}件{% if tc.high_count %} (high {{ tc.high_count }}){% endif %}</td></tr>
+          {% endfor %}
+          </tbody></table>
+        {% else %}<p class="small">AI分析データなし</p>{% endif %}
+      </div>
+    </div>
+
+    {% if recent_jobs %}
+    <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--g-border)">
+      <p class="small" style="margin:0 0 6px;font-weight:600">直近の一括ジョブ <a class="prop" href="/bulk" style="font-size:11px">→ すべて見る</a></p>
+      <table style="font-size:11px">
+        <thead><tr><th>開始</th><th>種別</th><th>ラベル</th><th>状態</th><th>進捗</th></tr></thead>
+        <tbody>
+        {% for j in recent_jobs %}
+          <tr>
+            <td class="small">{{ (j.started_at or '')[:16].replace('T',' ') }}</td>
+            <td>{% if j.kind == 'auto' %}<span class="badge b-role">自動</span>{% else %}<span class="badge b-role-edit">手動</span>{% endif %}</td>
+            <td><a class="prop" href="/bulk/{{ j.job_id }}">{{ j.label or j.job_id[:24] }}</a></td>
+            <td>{% if j.status == 'done' %}<span class="badge b-ok">完了</span>{% elif j.status == 'running' %}<span class="badge b-role">実行中</span>{% else %}<span class="badge b-na">{{ j.status }}</span>{% endif %}</td>
+            <td class="small">{{ j.n_done }}/{{ j.n_total }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</details>
+
+{# --- ⭐ 固定資産（お気に入り・タグ・MID重複） --- #}
+<details class="section">
+  <summary>⭐ お気に入り・タグ・横断情報<span class="count">★{{ fav_props|length + fav_conts|length }} / タグ{{ tag_dist|length }}種 / MID重複{{ duplicate_mids|length }}</span></summary>
+  <div class="section-body">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+      <div>
+        <h3 style="font-size:13px;color:var(--g-primary-dark);margin:0 0 8px">お気に入り ({{ fav_props|length + fav_conts|length }})</h3>
+        {% if fav_props or fav_conts %}
+        <table style="font-size:12px">
+          <tbody>
+          {% for p in fav_props %}
+            <tr>
+              <td><span class="badge b-role">GA4</span></td>
+              <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a></td>
+              <td><span class="grade-{{ p.health_grade }}">{{ p.health_grade }}</span></td>
+            </tr>
+          {% endfor %}
+          {% for c in fav_conts %}
+            <tr>
+              <td><span class="badge" style="background:#e8e2ff;color:#6c5ce7">GTM</span></td>
+              <td><a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a></td>
+              <td><span class="grade-{{ c.health_grade }}">{{ c.health_grade }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="small">プロパティやコンテナ詳細の★をクリックでお気に入り登録</p>{% endif %}
+      </div>
+
+      <div>
+        <h3 style="font-size:13px;color:var(--g-primary-dark);margin:0 0 8px">ユーザータグ別件数</h3>
+        {% if tag_dist %}
+        <table style="font-size:12px"><tbody>
+        {% for t, n in tag_dist %}
+          <tr><td><span class="tag-chip">{{ t }}</span></td><td>{{ n }} 件</td></tr>
+        {% endfor %}
+        </tbody></table>
+        {% else %}<p class="small">プロパティ・コンテナにタグを付けるとここに集計</p>{% endif %}
+      </div>
+
+      <div>
+        <h3 style="font-size:13px;color:var(--g-primary-dark);margin:0 0 8px">Measurement ID重複 ({{ duplicate_mids|length }})</h3>
+        {% if duplicate_mids %}
+        <table style="font-size:12px"><tbody>
+        {% for d in duplicate_mids %}
+          <tr>
+            <td><code>{{ d.mid }}</code></td>
+            <td class="small">
+              {% for c in d.containers %}<a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+        {% else %}<p class="small">なし 👍</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</details>
+
+<script>
+function showPane(btn){
+  const root = btn.closest('.section-body');
+  root.querySelectorAll('.pill-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  root.querySelectorAll('.pill-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(btn.dataset.pane).classList.add('active');
+}
+
+const REMEDIATION_GUIDE = {
+  untracked: {
+    summary: '直近7日間でセッション・ユーザー・イベントいずれも0件のプロパティ。計測停止または同意管理ブロック・ボット混入の可能性。',
+    steps: [
+      'GA4管理画面 → 「データストリーム」を開き、Measurement IDを確認',
+      'サイトの<code>gtag.js</code>（または紐づくGTMコンテナのGA4設定タグ）に上記MIDが正しく設定されているかチェック',
+      '<b>リアルタイム表示</b>で計測が来ているかチェック（来ていれば設定OK、来ていなければサイト側に問題）',
+      'CMP（同意管理ツール）が過剰にブロックしていないか確認',
+      'GA4管理画面 → 「データフィルタ」で内部トラフィック等の過剰除外設定を見直す',
+      'ボット流入が極端に増えた結果、すべてが自動的にフィルタされていないか確認',
+    ],
+    aiHint: 'プロパティ詳細ページの「🤖 AI分析」で深く診断できます。',
+  },
+  no_streams: {
+    summary: 'データストリームが1件もないプロパティ。計測タグが配置できないため、GA4データを受信できない状態。',
+    steps: [
+      'GA4管理画面 → プロパティ → 「データストリーム」を開く',
+      '「ストリームを追加」をクリックし、ウェブ／iOSアプリ／Androidアプリから選ぶ',
+      'URL・サイト名（Webの場合）または Bundle ID（アプリの場合）を入力',
+      '発行されたMeasurement IDをサイトのgtag.jsまたはGTMに設定',
+      '計測が反映されたかリアルタイム表示で確認',
+    ],
+  },
+  api_err: {
+    summary: 'Data API呼び出しが失敗。多くは権限不足、まれにOAuthトークンの期限切れやAPIクォータ。',
+    steps: [
+      'GA4管理画面でログイン中のGmailに「閲覧者」以上の権限が付与されているか確認',
+      '権限不足の場合: プロパティ所有者にアクセス申請',
+      'トークンの期限切れの可能性: <code>python auth.py add</code> で該当Gmailを再認証',
+      'Google Cloud Console → APIライブラリで「Google Analytics Data API」が有効か確認',
+      'クォータ枯渇の可能性: Cloud Console → API quotas を確認',
+    ],
+  },
+  no_ke: {
+    summary: 'キーイベント（旧コンバージョン）が0件。CV計測ができていないか、設計途上。',
+    steps: [
+      'ビジネスKPIに対応する計測ポイント（フォーム完了・購入・資料DLなど）を整理',
+      'GA4管理画面 → 「イベント」で対象イベントの右端トグルを「キーイベント」に切替',
+      'まだイベント自体がない場合は、GA4の「カスタム定義」または「イベント作成」で新規作成',
+      'eコマースの場合: <code>purchase</code>イベントを実装してからキーイベント化',
+      'AIに依頼: プロパティ詳細「🤖 AI分析」で「必須キーイベント提案」テンプレートが自動選択される',
+    ],
+    aiHint: 'AIに業種・トップイベントから推奨KEを5件提案させると、計測設計の起点になります。',
+  },
+  cd_overflow: {
+    summary: 'カスタムディメンションがGA4の上限50件に達している。整理が必要。',
+    steps: [
+      'GA4管理画面 → 「カスタム定義」で各CDの使用状況を確認',
+      '探索・標準レポートで実際にレポートに使われているCDをマーキング',
+      '直近30日で1度も使われていないCDを「アーカイブ候補」リスト化',
+      '命名規約を再確認、用途が同じCDは統合（過去データ移行は手動）',
+      '不要CDを削除する前にBigQueryエクスポート設定がCDに依存していないか確認',
+    ],
+    aiHint: 'AIに「CD棚卸し」テンプレートを実行させると、削除候補・統合候補を一覧化してくれます。',
+  },
+  no_tags: {
+    summary: 'タグが0件のGTMコンテナ。コンテナとして稼働していない、または編集中で未公開。',
+    steps: [
+      'GTMコンテナを開いて「バージョン履歴」を確認',
+      'ワークスペースに編集中のタグがあるか確認、あれば公開',
+      '実は別のコンテナで計測している可能性があるので、サイトソースを確認（GTM-XXXXXXX）',
+      '本当に使われていないテストコンテナなら、整理対象として削除を検討',
+    ],
+  },
+  ua_left: {
+    summary: 'Universal Analytics（2023年7月計測終了）タグが残存。発火しても無効値を送るだけだが、トリガーの取り扱いや誤動作リスクあり。',
+    steps: [
+      'GTM → タグ一覧でタイプ「Universal Analytics」「ua」をフィルタ',
+      '対象タグをすべて「一時停止」に変更',
+      'サイトで動作確認（Real-time表示・コンソールエラーチェック）',
+      '問題なければタグを削除',
+      '同時にUA専用だったトリガー・変数も削除',
+      'コンテナバージョンを公開（記述に「UAタグクリーンアップ」と残す）',
+    ],
+    aiHint: 'GTMコンテナ詳細でAI分析すると、削除すべきUAタグの一覧と移行計画を返してくれます。',
+  },
+  no_ga4: {
+    summary: 'GA4 Measurement IDが設定されていないGTMコンテナ。GA4経由の計測ができていない可能性。',
+    steps: [
+      'GA4プロパティ → 「データストリーム」からMeasurement ID（G-XXXX）を取得',
+      'GTM → 「変数」→ 新規 → 定数型でMID変数を作成（例: <code>CONST - GA4 MID</code>）',
+      'GTM → 「タグ」→ 新規 → 「Google タグ」または「GA4 設定」を選択',
+      '計測IDに作成した変数を設定、トリガーは「All Pages」',
+      'プレビュー → 動作確認 → 公開',
+    ],
+  },
+  sc_no_clicks: {
+    summary: '直近28日でClick数が0。インデックスされていない / ペナルティ / 検索意図とミスマッチ等の可能性。',
+    steps: [
+      'Search Console → 「ページ」レポートで「インデックスに登録されているページ」を確認',
+      'インデックス0なら: <code>robots.txt</code>と<code>noindex</code>メタタグを確認、sitemap提出',
+      'インデックス済みでもImp=0なら: 想定キーワードで「URL検査」を実行し、検索結果に表示されない原因を診断',
+      'Imp>0かつClick=0なら: タイトル・メタディスクリプションの改善（魅力的なフック追加）',
+      'コンテンツ品質・E-E-A-Tの観点で見直し',
+    ],
+  },
+  sc_no_sitemap: {
+    summary: 'XMLサイトマップが登録されていない。クロール最適化の余地。',
+    steps: [
+      'サイトの<code>/sitemap.xml</code>を生成（WordPressならYoast SEO等のプラグイン、静的サイトなら自動生成スクリプト）',
+      'Search Console → 左メニュー「サイトマップ」を開く',
+      '「新しいサイトマップの追加」に<code>sitemap.xml</code>を入力 → 送信',
+      '数日以内に取得ステータスが「成功」になることを確認',
+      'sitemap内のURL数とSearch Console上のインデックス済URL数を比較し、乖離を調査',
+    ],
+  },
+  sc_low_ctr: {
+    summary: 'インプレッションは多いがCTRが0.5%未満。タイトル・メタディスクリプションが検索意図に合っていない可能性。',
+    steps: [
+      'Search Console → 「クエリ」レポートでImp高×CTR低のクエリを特定',
+      '該当クエリで実際に検索し、自社結果がどう見えているかチェック',
+      'titleタグを改善: 検索意図を含むキーワード＋具体的なベネフィット',
+      'meta descriptionを最適化: 120-160字、検索クエリと関連する数値や独自性',
+      '構造化データ追加でリッチスニペット獲得（FAQ、HowTo、Product等）',
+      'ファビコン・サイト名・ブレッドクラム整備',
+    ],
+  },
+  sc_sitemap_errors: {
+    summary: 'sitemap内にエラーURLがある。クロール効率と発見性が低下する。',
+    steps: [
+      'Search Console → サイトマップ → 該当sitemap の「ステータス」をクリック',
+      'エラーURL一覧を確認（404・robots.txtブロック・noindex等）',
+      '404のURL: sitemapから削除またはコンテンツ復旧',
+      'noindexのURL: 意図通りなら sitemap から削除',
+      '修正後、sitemapを再送信し再クロールを待つ',
+    ],
+  },
+  duplicate_mids: {
+    summary: '同じMeasurement IDが複数のGTMコンテナで使用されている。**二重計測の重大リスク**。',
+    steps: [
+      '重複しているコンテナ群の用途を整理（テスト/本番、旧/新、PCサイト/モバイルサイトなど）',
+      'GA4のリアルタイム表示で実際に二重送信されていないかチェック',
+      '一方のコンテナでGA4設定タグを「一時停止」または削除',
+      'もし用途が明確に分かれているなら、コンテナごとにMIDを分離（別ストリーム作成）',
+      '修正後、二重計測の期間にあたる過去データに注意書きを残す',
+    ],
+    aiHint: 'AI分析でどちらのコンテナを残すべきかの判断材料を生成できます。',
+  },
+  mismatch: {
+    summary: 'GA4プロパティのMeasurement IDを受信するGTMコンテナが見当たらない。gtag.js直設置、別タグ管理ツール経由、サイトを離れた別ドメインからの送信等。',
+    steps: [
+      'サイトソースを確認: <code>gtag(\'config\', \'G-XXXX\')</code>の直書きがないか',
+      'GTM以外のタグ管理ツール（Yahoo!タグマネージャ・Tealium等）からの送信を確認',
+      '統一方針を決定: GTMに寄せる or gtag直設置を継続',
+      'GTMに寄せる場合: GA4設定タグを追加 → gtag.js削除',
+      '直設置を継続する場合: 本ツールでは「警告」だが実害なし（無視可）',
+    ],
+  },
+};
+
+async function showAlertDetails(kind, title){
+  showModal({title, body: '<p class="small">読み込み中…</p>', actions:[{label:'閉じる', value:false}]});
+  try {
+    const r = await fetch(`/api/alerts/${kind}`);
+    const d = await r.json();
+    const items = d.items || [];
+
+    // build target list HTML
+    let targetHtml = '';
+    if(!items.length){
+      targetHtml = '<p>該当なし</p>';
+    } else if(kind === 'duplicate_mids'){
+      targetHtml = `<p class="small">${items.length}件の重複Measurement IDが見つかっています。</p>`;
+      targetHtml += '<table style="font-size:12px"><thead><tr><th>Measurement ID</th><th>使用コンテナ</th></tr></thead><tbody>';
+      for(const i of items){
+        const conts = (i.containers || []).map(c => `<a class="prop" href="/gtm/${c.container_id}/tag">${escapeHtml(c.account_name)} / ${escapeHtml(c.name)}</a>`).join('<br>');
+        targetHtml += `<tr><td><code>${escapeHtml(i.name)}</code></td><td class="small">${conts}</td></tr>`;
+      }
+      targetHtml += '</tbody></table>';
+    } else if(kind === 'mismatch'){
+      targetHtml = `<p class="small">${items.length}件のGA4プロパティでMeasurement IDを受信するGTMコンテナが見当たりません。<br>gtag直設置・別ツールからの計測の可能性があります。</p>`;
+      targetHtml += '<table style="font-size:12px"><thead><tr><th>プロパティ</th><th>未受信MID</th></tr></thead><tbody>';
+      for(const i of items){
+        const mids = (i.unmatched_mids || []).map(m => `<span class="badge b-role">${escapeHtml(m)}</span>`).join(' ');
+        targetHtml += `<tr><td><a class="prop" href="${i.link}">${escapeHtml(i.name)}</a><br><span class="small">${escapeHtml(i.subtitle || '')}</span></td><td>${mids}</td></tr>`;
+      }
+      targetHtml += '</tbody></table>';
+    } else {
+      targetHtml = `<p class="small">${items.length}件 ヒットしました。クリックで詳細ページへ。</p>`;
+      targetHtml += '<table style="font-size:12px"><thead><tr><th>対象</th><th>グレード</th><th>補足</th></tr></thead><tbody>';
+      for(const i of items){
+        targetHtml += `<tr><td><a class="prop" href="${i.link}">${escapeHtml(i.name || '')}</a><br><span class="small">${escapeHtml(i.subtitle || '')}</span></td><td>${i.grade ? `<span class="grade-${i.grade}">${i.grade}</span>` : '—'}</td><td class="small">${escapeHtml(i.extra || '—')}</td></tr>`;
+      }
+      targetHtml += '</tbody></table>';
+    }
+
+    // build remediation HTML
+    const guide = REMEDIATION_GUIDE[kind];
+    let guideHtml = '';
+    if(guide){
+      guideHtml += `<div style="background:var(--g-primary-light);padding:10px 14px;border-radius:6px;border-left:3px solid var(--g-primary);margin-bottom:14px">
+        <b style="color:var(--g-primary-dark)">この問題について</b>
+        <p style="margin:6px 0 0;font-size:12px;line-height:1.7">${escapeHtml(guide.summary)}</p>
+      </div>`;
+      if(guide.steps && guide.steps.length){
+        guideHtml += '<p style="margin:0 0 6px;font-size:13px;font-weight:600;color:var(--g-primary-dark)">📝 対策手順</p>';
+        guideHtml += '<ol style="margin:0;padding-left:24px;font-size:12px;line-height:1.85">';
+        for(const s of guide.steps){
+          guideHtml += `<li style="margin-bottom:4px">${s}</li>`;
+        }
+        guideHtml += '</ol>';
+      }
+      if(guide.aiHint){
+        guideHtml += `<div style="margin-top:12px;padding:10px 14px;background:var(--g-ai-bg);border-radius:6px;border-left:3px solid var(--g-ai);font-size:12px;line-height:1.7">🤖 ${escapeHtml(guide.aiHint)}</div>`;
+      }
+    } else {
+      guideHtml = '<p class="small">この種類のアラートに対する対策ガイドは未整備です。</p>';
+    }
+
+    // build tabs body
+    const tabBody = `
+      <div class="pill-tabs" style="margin-bottom:14px">
+        <button class="active" data-pane="modal-target" onclick="showModalPane(this)">対象 ${items.length}件</button>
+        <button data-pane="modal-guide" onclick="showModalPane(this)">📋 対策方法</button>
+      </div>
+      <div class="pill-pane active" id="modal-target">${targetHtml}</div>
+      <div class="pill-pane" id="modal-guide">${guideHtml}</div>
+    `;
+
+    closeModal();
+    showModal({title: `${title} (${items.length}件)`, body: tabBody, actions:[{label:'閉じる', value:false}]});
+  } catch(e){
+    closeModal();
+    showToast('読み込み失敗: ' + e.message, 'error');
+  }
+}
+
+function showModalPane(btn){
+  const root = btn.closest('.modal-b');
+  root.querySelectorAll('.pill-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  root.querySelectorAll('.pill-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(btn.dataset.pane).classList.add('active');
+}
+
+async function quickRefresh(){
+  const ok = await confirmModal('全アカウントを再収集します。完了まで数十分かかります。続行しますか？', {okLabel:'▶ 実行'});
+  if(!ok) return;
+  try {
+    await fetch('/refresh', {method:'POST'});
+    showToast('データ収集を開始しました');
+  } catch(e){ showToast('失敗: ' + e.message, 'error'); }
+}
+async function quickAutoDiag(){
+  showToast('実行中…');
+  try {
+    const r = await fetch('/api/auto_diagnose/run', {method:'POST'});
+    const d = await r.json();
+    if(d.job_id) location.href = '/bulk/' + d.job_id;
+    else { showToast('完了（新規アラートなし）'); setTimeout(()=>location.reload(), 1500); }
+  } catch(e){ showToast('失敗: ' + e.message, 'error'); }
+}
+async function quickBulkAlerted(){
+  try {
+    const r = await fetch('/api/bulk/select_alerted?max=20');
+    const d = await r.json();
+    if(!d.n){ showToast('アラート対象なし'); return; }
+    const proceed = await showModal({
+      title: `アラート分一括AI分析 (${d.n}件)`,
+      body: `<p>アラートが発生している${d.n}件のプロパティを一括分析します。モデル選択:</p>
+        <div style="display:flex;gap:8px;flex-direction:column;margin-top:10px">
+          <label><input type="radio" name="bulkM" value="claude-sonnet-4-6" checked> <b>Sonnet 4.6</b> <span class="small">標準・速い（推奨）</span></label>
+          <label><input type="radio" name="bulkM" value="claude-opus-4-8"> <b>Opus 4.8</b> <span class="small">深い分析（約5倍コスト）</span></label>
+        </div>`,
+      actions: [{label:'キャンセル', value:false}, {label:'次へ', value:true, primary:true}],
+    });
+    if(!proceed) return;
+    const modelId = document.querySelector('input[name=bulkM]:checked')?.value || 'claude-sonnet-4-6';
+    const est = await fetch(`/api/bulk/estimate?n=${d.n}&model=${modelId}`).then(r=>r.json());
+    const ok = await showModal({
+      title: '実行確認',
+      body: `<table>
+        <tr><td><b>対象</b></td><td>${est.n} 件</td></tr>
+        <tr><td><b>モデル</b></td><td>${est.model}</td></tr>
+        <tr><td><b>推定コスト</b></td><td><b style="color:var(--g-ai)">$${est.estimated_usd}</b> (約${est.estimated_jpy}円)</td></tr>
+        <tr><td><b>所要時間</b></td><td>約${Math.round(est.n*60/60)}分</td></tr>
+      </table>`,
+      actions: [{label:'戻る', value:false}, {label:'▶ 実行', value:true, primary:true}],
+    });
+    if(!ok) return;
+    const r2 = await fetch('/api/bulk/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({property_ids: d.property_ids, model: modelId, label: 'アラート分一括 ' + new Date().toLocaleString('ja-JP')})});
+    const j = await r2.json();
+    if(j.job_id) location.href = '/bulk/' + j.job_id;
+  } catch(e){ showToast('失敗: ' + e.message, 'error'); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Search Console サイト一覧{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>Search Console</span></nav>
+{% endblock %}
+{% block body %}
+
+{% if not sites %}
+{% set sc_errors = (inv.errors or [])|selectattr('stage','search','sc_')|list %}
+<div class="card" style="border-left:3px solid var(--g-warn)">
+  <h2 style="color:var(--g-warn)">Search Console データが未収集です</h2>
+
+  {% if sc_errors %}
+  <div class="err" style="margin-bottom:14px">
+    {{ sc_errors|length }}件のSCエラーが検出されています:
+    <details style="margin-top:6px"><summary class="small" style="cursor:pointer">エラー詳細を表示</summary>
+      <pre style="font-size:11px;margin-top:6px;max-height:200px">{% for e in sc_errors[:3] %}{{ e.email }} / {{ e.stage }}
+{{ e.error[:400] }}
+{% endfor %}</pre>
+    </details>
+  </div>
+  {% endif %}
+
+  <h3 style="font-size:14px;margin:14px 0 8px">対処手順</h3>
+  <ol style="font-size:13px;line-height:1.9">
+    <li>
+      <b>Google Cloud Console で Search Console API を有効化</b><br>
+      <a class="prop" href="https://console.developers.google.com/apis/api/searchconsole.googleapis.com/overview?project=gtmga4manage" target="_blank" rel="noopener">→ APIを有効化する（gtmga4manageプロジェクト）</a><br>
+      <span class="small">画面上部の「有効にする」ボタンを押す。1〜2分で反映</span>
+    </li>
+    <li style="margin-top:10px">
+      <b>OAuth スコープ <code>webmasters.readonly</code> を含めて再認証</b>（未実施の場合のみ）<br>
+      <code>.venv\Scripts\python.exe auth.py add</code> を全Gmailで実行
+    </li>
+    <li style="margin-top:10px">
+      <b>SCのみ再収集</b>（全体再収集44分を待つ必要なし、約2〜5分で完了）<br>
+      <code>.venv\Scripts\python.exe collect_sc_only.py</code>
+    </li>
+  </ol>
+  <p class="small" style="margin-top:14px">完了後、このページを再読み込みすればサイト一覧が表示されます。</p>
+</div>
+{% else %}
+
+{% set total_clicks = sites|sum(attribute='clicks_28d') %}
+{% set total_imps = sites|sum(attribute='impressions_28d') %}
+{% set avg_score = (sites|sum(attribute='health_score') / sites|length)|round(1) if sites|length else 0 %}
+<div class="kpi-row">
+  <div class="kpi"><span>サイト</span><b>{{ sites|length }}</b></div>
+  <div class="kpi"><span>合計Click(28d)</span><b>{{ '{:,}'.format(total_clicks) }}</b></div>
+  <div class="kpi"><span>合計Impression</span><b>{{ '{:,}'.format(total_imps) }}</b></div>
+  <div class="kpi"><span>平均スコア</span><b>{{ avg_score }}</b></div>
+  <div class="kpi"><span>GA4連携済</span><b>{{ sites|selectattr('has_ga4_link')|list|length }}</b></div>
+</div>
+
+{% set emails = sites|map(attribute='auth_email')|unique|sort|list %}
+<div class="filters">
+  <input type="search" id="q" placeholder="検索（ドメイン/URL/権限）">
+  <select id="email-filter">
+    <option value="">アカウント: すべて</option>
+    {% for e in emails %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+  </select>
+  <select id="type-filter">
+    <option value="">タイプ: すべて</option>
+    <option value="DOMAIN">ドメインプロパティ</option>
+    <option value="URL_PREFIX">URLプレフィックス</option>
+  </select>
+  <select id="grade-filter">
+    <option value="">グレード: すべて</option>
+    {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
+  </select>
+  <select id="ga4-filter">
+    <option value="">GA4連携: すべて</option>
+    <option value="yes">連携あり</option>
+    <option value="no">連携なし</option>
+  </select>
+  <span class="small" id="match-count"></span>
+</div>
+
+<table id="tbl">
+  <thead>
+    <tr>
+      <th data-type="str">認証Gmail</th>
+      <th data-type="str">サイト</th>
+      <th data-type="str">タイプ</th>
+      <th data-type="str">権限</th>
+      <th data-type="num">スコア</th>
+      <th data-type="num">Click(28d)</th>
+      <th data-type="num">Imp(28d)</th>
+      <th data-type="num">CTR</th>
+      <th data-type="num">平均順位</th>
+      <th data-type="num">クエリ</th>
+      <th data-type="num">ページ</th>
+      <th data-type="num">Sitemap</th>
+      <th data-type="str">紐づくGA4</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in sites %}
+    <tr
+      data-email="{{ s.auth_email }}"
+      data-type="{{ s.site_type }}"
+      data-grade="{{ s.health_grade }}"
+      data-ga4link="{{ 'yes' if s.has_ga4_link else 'no' }}"
+      data-search="{{ (s.site_url ~ ' ' ~ s.domain ~ ' ' ~ s.permission_level)|lower }}">
+      <td class="small">{{ s.auth_email }}</td>
+      <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a></td>
+      <td class="small">{% if s.site_type == 'DOMAIN' %}<span class="badge b-role">ドメイン</span>{% else %}<span class="badge b-role-edit">URL Pre</span>{% endif %}</td>
+      <td class="small">{{ s.permission_level.replace('siteOwner','Owner').replace('siteFullUser','FullUser').replace('siteRestrictedUser','Restricted').replace('siteUnverifiedUser','Unverified') }}</td>
+      <td><span class="grade-{{ s.health_grade }}">{{ s.health_grade }}</span> {{ s.health_score }}</td>
+      <td>{{ '{:,}'.format(s.clicks_28d) }}</td>
+      <td>{{ '{:,}'.format(s.impressions_28d) }}</td>
+      <td class="small">{{ '%.2f' % (s.ctr_28d * 100) }}%</td>
+      <td class="small">{{ '%.1f' % s.position_28d if s.position_28d else '—' }}</td>
+      <td>{{ s.top_query_count }}</td>
+      <td>{{ s.top_page_count }}</td>
+      <td class="small">{% if s.sitemap_count > 0 %}{{ s.sitemap_count }}{% if s.sitemap_errors %} <span class="alert-warn">(err {{ s.sitemap_errors }})</span>{% endif %}{% else %}<span class="alert-warn">無</span>{% endif %}</td>
+      <td class="small">
+        {% set links = site_to_ga4.get(s.site_hash) or [] %}
+        {% if links %}
+          {% for p in links[:2] %}<a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}
+          {% if links|length > 2 %}<br><span class="small">他 {{ links|length - 2 }}件</span>{% endif %}
+        {% else %}<span class="small">—</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+const q = document.getElementById('q');
+const ef = document.getElementById('email-filter');
+const tf = document.getElementById('type-filter');
+const gf = document.getElementById('grade-filter');
+const lf = document.getElementById('ga4-filter');
+const tbl = document.getElementById('tbl');
+const cnt = document.getElementById('match-count');
+const total = tbl.tBodies[0].rows.length;
+
+function applyFilter(){
+  const s = q.value.toLowerCase().trim();
+  let shown = 0;
+  for(const r of tbl.tBodies[0].rows){
+    const okS = !s || r.dataset.search.includes(s);
+    const okE = !ef.value || r.dataset.email === ef.value;
+    const okT = !tf.value || r.dataset.type === tf.value;
+    const okG = !gf.value || r.dataset.grade === gf.value;
+    const okL = !lf.value || r.dataset.ga4link === lf.value;
+    const ok = okS && okE && okT && okG && okL;
+    r.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  }
+  cnt.textContent = (s||ef.value||tf.value||gf.value||lf.value) ? `${shown} / ${total} 件` : `${total} 件`;
+}
+[q, ef, tf, gf, lf].forEach(el => el.addEventListener('input', applyFilter));
+applyFilter();
+
+const sortDir = {};
+tbl.tHead.querySelectorAll('th').forEach((th, i) => {
+  th.style.cursor = 'pointer';
+  th.addEventListener('click', () => {
+    const dir = sortDir[i] = !sortDir[i];
+    const type = th.dataset.type || 'str';
+    const rows = [...tbl.tBodies[0].rows];
+    rows.sort((a, b) => {
+      const av = a.cells[i].innerText.trim();
+      const bv = b.cells[i].innerText.trim();
+      if(type === 'num'){
+        const an = parseFloat(av.replace(/[,%A-Z]/g,'')) || 0;
+        const bn = parseFloat(bv.replace(/[,%A-Z]/g,'')) || 0;
+        return dir ? an-bn : bn-an;
+      }
+      return dir ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    rows.forEach(r => tbl.tBodies[0].appendChild(r));
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

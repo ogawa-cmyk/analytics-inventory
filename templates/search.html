@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}横串検索{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>横串検索</span></nav>
+{% endblock %}
+{% block body %}
+<form method="get" class="filters" style="margin-bottom:16px">
+  <input type="search" name="q" placeholder="検索キーワード（部分一致、大文字小文字無視）" value="{{ q }}" style="flex:1;min-width:300px" autofocus>
+  {% for k, label in [('event','イベント'),('ke','キーイベント'),('cd','カスタムDim'),('cm','カスタム指標'),('tag','GTMタグ'),('trigger','トリガー'),('variable','変数')] %}
+    <label style="font-size:12px;display:inline-flex;align-items:center;gap:3px">
+      <input type="checkbox" name="kind" value="{{ k }}" {% if k in kinds %}checked{% endif %}> {{ label }}
+    </label>
+  {% endfor %}
+  <button type="submit" class="btn">検索</button>
+</form>
+
+{% if q %}
+  <div class="kpi-row">
+    <div class="kpi"><span>マッチ合計</span><b>{{ hits|length }}</b></div>
+    {% for k, label in [('event','イベント'),('ke','キーイベント'),('cd','CD'),('cm','CM'),('tag','タグ'),('trigger','トリガー'),('variable','変数')] %}
+      {% if by_kind.get(k) %}
+        <div class="kpi"><span>{{ label }}</span><b>{{ by_kind[k] }}</b></div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if hits %}
+  <table>
+    <thead>
+      <tr>
+        <th>種別</th>
+        <th>名称</th>
+        <th>所属</th>
+        <th>認証Gmail</th>
+        <th>補足</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for h in hits %}
+      <tr>
+        <td class="small">
+          <span class="badge b-role">{{ {'event':'イベント','ke':'キーイベント','cd':'CD','cm':'CM','tag':'タグ','trigger':'トリガー','variable':'変数'}.get(h.kind, h.kind) }}</span>
+        </td>
+        <td>{{ h.label }}</td>
+        <td><a class="prop" href="{{ h.link }}">{{ h.owner }}</a></td>
+        <td class="small">{{ h.auth_email }}</td>
+        <td class="small">{{ h.extra }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if hits|length >= 500 %}
+    <p class="small" style="margin-top:8px">⚠ 結果が500件で打ち切られています。検索語を絞り込んでください。</p>
+  {% endif %}
+  {% else %}
+    <p class="small">マッチなし</p>
+  {% endif %}
+{% else %}
+  <p class="small">キーワードを入力してください。プロパティ詳細を取得済みのアセットのみ検索対象です。</p>
+{% endif %}
+{% endblock %}
