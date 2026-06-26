@@ -52,11 +52,27 @@ def _load(job_id: str) -> dict | None:
     p = _job_path(job_id)
     if not p.exists():
         return None
-    return json.loads(p.read_text(encoding="utf-8"))
+    return _safe_load(p)
 
 
 def _save(job: dict) -> None:
-    _job_path(job["job_id"]).write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Atomic write: write to temp then replace, so status-polling never reads a
+    # half-written file (which would crash json.loads).
+    path = _job_path(job["job_id"])
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    import os as _os
+    _os.replace(tmp, path)
+
+
+def _safe_load(p: Path) -> dict | None:
+    """Read a job file, tolerating a transient half-written state."""
+    for _ in range(3):
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, FileNotFoundError):
+            time.sleep(0.05)
+    return None
 
 
 def list_jobs(limit: int = 50) -> list[dict]:

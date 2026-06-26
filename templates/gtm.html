@@ -46,6 +46,7 @@
   <a href="/export/gtm.csv" class="btn" style="margin-left:auto">⬇ CSV</a>
 </div>
 
+<div class="table-wrap">
 <table id="tbl">
   <thead>
     <tr>
@@ -113,6 +114,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 <script>
 const q = document.getElementById('q');
@@ -147,12 +149,6 @@ function applyFilter(){
 [q, ef, af, gf, gradef, tagf, ff].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
 
-function showToast(msg){
-  let t = document.getElementById('toast');
-  if(!t){ t = document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 1800);
-}
 async function toggleFavGtm(el, cid){
   const newVal = el.dataset.on !== '1';
   try {

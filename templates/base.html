@@ -463,7 +463,13 @@ async function triggerRefresh(){
   sta.textContent = '開始中…';
   try {
     const r = await fetch('/refresh', {method:'POST'});
-    await r.json();
+    const d = await r.json();
+    if(r.status === 409){
+      sta.className = 'status-msg';
+      sta.textContent = '既に実行中です';
+      pollRefreshStatus();
+      return;
+    }
     sta.textContent = '収集中…';
     pollRefreshStatus();
   } catch(e){
@@ -545,6 +551,7 @@ window.runQuickAuto = async function(e){
 let _keyBuf = '';
 let _keyT = null;
 document.addEventListener('keydown', e => {
+  if(e.isComposing || e.keyCode === 229) return;  // IME変換中は無視
   if(e.target.matches('input,textarea,select')) return;
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   if(e.key === '?') { e.preventDefault(); location.href = '/help'; return; }

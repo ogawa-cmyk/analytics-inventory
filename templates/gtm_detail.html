@@ -27,8 +27,8 @@
   {% endif %}
 </p>
 
-<div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid #6c5ce7">
-  <h2 style="color:#6c5ce7;border-bottom-color:#e8e2ff">🤖 GTM AI分析・アクションプラン生成</h2>
+<div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid var(--g-ai)">
+  <h2 style="color:var(--g-ai);border-bottom-color:var(--g-ai-bg)">🤖 GTM AI分析・アクションプラン生成</h2>
   <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <label class="small">モデル:</label>
     <select id="ai-model" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
@@ -36,7 +36,7 @@
       <option value="claude-opus-4-8">Opus 4.8（深い分析）</option>
     </select>
     <input id="ai-extra" type="text" placeholder="追加指示（任意）例: 古いタグ整理に重点" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
-    <button class="btn" id="ai-run-btn" onclick="runAnalysis()" style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">▶ 分析実行</button>
+    <button class="btn" id="ai-run-btn" onclick="runAnalysis()" style="background:var(--g-ai);color:#fff;border-color:var(--g-ai)">▶ 分析実行</button>
     {% if ai_runs %}
     <select id="ai-history" onchange="loadHistory(this.value)" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px;margin-left:auto">
       <option value="">過去の分析 ({{ ai_runs|length }}件)</option>
@@ -91,20 +91,20 @@ function renderResult(parsed){
   const meta = parsed._meta || {};
   let h = '';
   if(parsed.summary){
-    h += `<div style="background:#f5f3ff;padding:12px 14px;border-radius:6px;border-left:3px solid #6c5ce7;margin-bottom:14px">
-      <b style="color:#6c5ce7">所見</b>
+    h += `<div style="background:var(--g-ai-bg);padding:12px 14px;border-radius:6px;border-left:3px solid var(--g-ai);margin-bottom:14px">
+      <b style="color:var(--g-ai)">所見</b>
       <p style="margin:6px 0 0;font-size:13px;line-height:1.7">${escapeHtml(parsed.summary)}</p>
     </div>`;
   }
   if(parsed.issues && parsed.issues.length){
     h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
-      <h3 style="font-size:14px;color:#333;margin:0">🚨 課題 (${parsed.issues.length})</h3>
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">🚨 課題 (${parsed.issues.length})</h3>
       <button class="btn" onclick="toggleAll('issue', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
     </div>`;
     h += '<div style="display:flex;flex-direction:column;gap:6px">';
     for(const i of parsed.issues){
-      const sevColor = i.severity === 'high' ? '#c62828' : i.severity === 'medium' ? '#ef6c00' : '#546e7a';
-      const sevBg = i.severity === 'high' ? '#ffebee' : i.severity === 'medium' ? '#fff3e0' : '#eceff1';
+      const sevColor = i.severity === 'high' ? 'var(--g-error)' : i.severity === 'medium' ? 'var(--g-warn)' : '#78909c';
+      const sevBg = i.severity === 'high' ? 'var(--g-error-bg)' : i.severity === 'medium' ? 'var(--g-warn-bg)' : 'var(--g-row-alt)';
       h += `<details class="ai-acc issue-acc" style="background:${sevBg};border-left:3px solid ${sevColor};border-radius:5px">
         <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center">
           <span style="color:${sevColor};font-size:11px">▶</span>
@@ -112,14 +112,14 @@ function renderResult(parsed){
           <span class="small">${escapeHtml(i.category || '')}</span>
           <b style="font-size:13px">${escapeHtml(i.title || '')}</b>
         </summary>
-        <p style="margin:0;padding:0 12px 12px;font-size:12px;line-height:1.6;color:#444">${escapeHtml(i.description || '')}</p>
+        <p style="margin:0;padding:0 12px 12px;font-size:12px;line-height:1.6;color:var(--g-text-muted)">${escapeHtml(i.description || '')}</p>
       </details>`;
     }
     h += '</div>';
   }
   if(parsed.action_plan && parsed.action_plan.length){
     h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
-      <h3 style="font-size:14px;color:#333;margin:0">✅ アクションプラン (${parsed.action_plan.length})</h3>
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">✅ アクションプラン (${parsed.action_plan.length})</h3>
       <button class="btn" onclick="toggleAll('action', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
     </div>`;
     h += '<div style="display:flex;flex-direction:column;gap:6px">';
@@ -127,17 +127,17 @@ function renderResult(parsed){
       const a = parsed.action_plan[idx];
       h += `<details class="ai-acc action-acc" style="border:1px solid var(--g-border);border-radius:6px">
         <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span style="color:#2e7d32;font-size:11px">▶</span>
-          <span class="badge" style="background:#2e7d32;color:#fff">優先度 ${a.priority || idx+1}</span>
+          <span style="color:var(--g-primary);font-size:11px">▶</span>
+          <span class="badge" style="background:var(--g-primary);color:#fff">優先度 ${a.priority || idx+1}</span>
           <span class="small">${escapeHtml(a.estimated_effort || '')}</span>
-          ${a.delegate_to_ai && a.delegate_prompt ? '<span class="small" style="color:#6c5ce7">🤖 委任可</span>' : ''}
+          ${a.delegate_to_ai && a.delegate_prompt ? '<span class="small" style="color:var(--g-ai)">🤖 委任可</span>' : ''}
           <b style="font-size:13px">${escapeHtml(a.title || '')}</b>
         </summary>
         <div style="padding:0 14px 12px">
-          <p style="margin:6px 0 8px;font-size:12px;line-height:1.7;color:#444;white-space:pre-wrap">${escapeHtml(a.description || '')}</p>`;
+          <p style="margin:6px 0 8px;font-size:12px;line-height:1.7;color:var(--g-text-muted);white-space:pre-wrap">${escapeHtml(a.description || '')}</p>`;
       if(a.delegate_to_ai && a.delegate_prompt){
-        h += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6c5ce7;font-size:12px;font-weight:500">🤖 ${escapeHtml(a.delegate_label || 'このアクションを外部AIに依頼')} — プロンプトを開く</summary>
-          <textarea readonly rows="8" style="font-family:monospace;font-size:11px;line-height:1.5;margin-top:8px;background:#fafafa">${escapeHtml(a.delegate_prompt)}</textarea>
+        h += `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--g-ai);font-size:12px;font-weight:500">🤖 ${escapeHtml(a.delegate_label || 'このアクションを外部AIに依頼')} — プロンプトを開く</summary>
+          <textarea readonly rows="8" style="font-family:monospace;font-size:11px;line-height:1.5;margin-top:8px;background:var(--g-row-alt)">${escapeHtml(a.delegate_prompt)}</textarea>
           <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
             ${[{label:'Claude', url:'https://claude.ai/new?q={q}'},{label:'ChatGPT', url:'https://chatgpt.com/?q={q}'},{label:'Perplexity', url:'https://www.perplexity.ai/search/new?q={q}'},{label:'Gemini', url:'https://gemini.google.com/app?q={q}'},{label:'Grok', url:'https://grok.com/?q={q}'}].map(s => `<button class="btn" onclick="openExt('${s.url}', this)" data-prompt="${escapeAttr(a.delegate_prompt)}">${s.label}</button>`).join('')}
             <button class="btn" onclick="copyText(this)" data-prompt="${escapeAttr(a.delegate_prompt)}" style="margin-left:auto">📋 コピー</button>
@@ -161,7 +161,7 @@ async function runAnalysis(){
   const el = document.getElementById('ai-result');
   btn.disabled = true;
   btn.innerText = '⟳ 分析中… 30〜90秒';
-  el.innerHTML = '<div class="status-msg spin" style="background:#f5f3ff;color:#6c5ce7;display:inline-block">Claudeが分析中…</div>';
+  el.innerHTML = '<div class="status-msg spin" style="background:var(--g-ai-bg);color:var(--g-ai);display:inline-block">Claudeが分析中…</div>';
   try {
     const r = await fetch(`/api/gtm/${CID_AI}/ai_analyze`, {
       method:'POST', headers:{'Content-Type':'application/json'},

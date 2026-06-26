@@ -46,6 +46,7 @@
 </div>
 <div class="filter-chips" id="active-chips"></div>
 
+<div class="table-wrap">
 <table id="tbl">
   <thead>
     <tr>
@@ -110,8 +111,7 @@
     {% endfor %}
   </tbody>
 </table>
-
-<div id="toast" class="toast"></div>
+</div>
 
 <script>
 const tbl = document.getElementById('tbl');
@@ -158,12 +158,6 @@ tbl.tHead.querySelectorAll('th').forEach((th, i) => {
   });
 });
 
-function showToast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 1800);
-}
 function getSelectedIds(){
   return [...document.querySelectorAll('.row-check:checked')]
     .filter(c => c.closest('tr').style.display !== 'none')

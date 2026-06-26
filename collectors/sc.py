@@ -104,8 +104,7 @@ def performance_summary(creds, site_url: str) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
     rows = resp.get("rows", []) or []
     if not rows:
-        return {"ok": True, "clicks": 0, "impressions": 0, "ctr": 0.0, "position": 0.0,
-                "date_start": resp.get("responseAggregationType")}
+        return {"ok": True, "clicks": 0, "impressions": 0, "ctr": 0.0, "position": 0.0}
     r = rows[0]
     return {
         "ok": True,

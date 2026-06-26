@@ -15,6 +15,7 @@ from config import (
     EVENTS_LOOKBACK_DAYS,
     DATA_FRESHNESS_DAYS,
     GTM_DETAILS_DIR,
+    INDEXER_LOCK_PATH,
     INVENTORY_PATH,
     SC_DETAILS_DIR,
 )
@@ -175,6 +176,23 @@ def main(target_emails: list[str] | None = None) -> None:
         print("No accounts. Run: python auth.py add")
         sys.exit(1)
 
+    # Lock file: prevents concurrent indexer runs (which would corrupt the
+    # shared inventory.json / details files via interleaved writes).
+    try:
+        INDEXER_LOCK_PATH.write_text(_now(), encoding="utf-8")
+    except Exception:
+        pass
+
+    try:
+        _run(emails)
+    finally:
+        try:
+            INDEXER_LOCK_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _run(emails: list[str]) -> None:
     properties: list = []
     gtm_containers: list = []
     sc_sites: list = []

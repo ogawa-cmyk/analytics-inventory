@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -10,6 +11,13 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _safe_id(value: str) -> bool:
+    """Reject path-traversal-prone identifiers before building a file path."""
+    return bool(value) and bool(_SAFE_ID.match(value))
 
 import ai_executor
 import ai_prompts
@@ -64,12 +72,9 @@ def _load_inventory() -> dict:
     ann.enrich_properties(inv.get("properties", []))
     ann.enrich_containers(inv.get("gtm_containers", []))
     health.enrich_containers_with_score(inv.get("gtm_containers", []), _load_gtm_live)
-    # SC enrichment uses GA4 domains for linkage detection
+    # SC enrichment uses GA4 domains for linkage detection.
+    # Collect domains from each property's data stream URIs.
     ga4_domains: set = set()
-    for p in inv.get("properties", []):
-        for stream in (p.get("measurement_ids") or []):
-            pass
-    # Use stream URIs from details if available; fall back to property display URLs
     for p in inv.get("properties", []):
         pid = p.get("property_id")
         path = DETAILS_DIR / f"{pid}.json"
@@ -265,6 +270,8 @@ def gtm_view():
 
 @app.route("/property/<pid>")
 def property_detail(pid: str):
+    if not _safe_id(pid):
+        abort(404)
     path = DETAILS_DIR / f"{pid}.json"
     if not path.exists():
         abort(404)
@@ -307,6 +314,8 @@ def api_property_ai_analyze(pid: str):
 
 @app.route("/api/property/<pid>/ai_run/<stamp>")
 def api_property_ai_run(pid: str, stamp: str):
+    if not (_safe_id(pid) and _safe_id(stamp)):
+        abort(404)
     run = ai_executor.load_run(pid, stamp)
     if not run:
         abort(404)
@@ -570,6 +579,8 @@ def api_property_ai_prompt(pid: str):
 
 @app.route("/gtm/<cid>/download")
 def gtm_download(cid: str):
+    if not _safe_id(cid):
+        abort(404)
     path = GTM_DETAILS_DIR / f"{cid}.json"
     if not path.exists():
         abort(404)
@@ -586,7 +597,7 @@ def gtm_download(cid: str):
 
 @app.route("/gtm/<cid>/<kind>")
 def gtm_detail(cid: str, kind: str):
-    if kind not in ("tag", "trigger", "variable"):
+    if kind not in ("tag", "trigger", "variable") or not _safe_id(cid):
         abort(404)
     path = GTM_DETAILS_DIR / f"{cid}.json"
     if not path.exists():
@@ -634,6 +645,8 @@ def api_gtm_ai_analyze(cid: str):
 
 @app.route("/api/gtm/<cid>/ai_run/<stamp>")
 def api_gtm_ai_run(cid: str, stamp: str):
+    if not (_safe_id(cid) and _safe_id(stamp)):
+        abort(404)
     run = ai_executor.load_gtm_run(cid, stamp)
     if not run:
         abort(404)
@@ -733,6 +746,8 @@ def api_inventory():
 
 @app.route("/api/property/<pid>")
 def api_property(pid: str):
+    if not _safe_id(pid):
+        abort(404)
     path = DETAILS_DIR / f"{pid}.json"
     if not path.exists():
         abort(404)
@@ -772,6 +787,8 @@ def sc_list():
 
 @app.route("/sc/<site_hash>")
 def sc_detail(site_hash: str):
+    if not _safe_id(site_hash):
+        abort(404)
     path = SC_DETAILS_DIR / f"{site_hash}.json"
     if not path.exists():
         abort(404)
@@ -841,8 +858,26 @@ def usage_page():
     return render_template("usage.html", inv=inv)
 
 
+def _indexer_running() -> bool:
+    """Lock-file based check (no psutil dependency). A stale lock older than
+    90 minutes is ignored so a crashed indexer can't block refreshes forever."""
+    from config import INDEXER_LOCK_PATH
+    if not INDEXER_LOCK_PATH.exists():
+        return False
+    try:
+        age = datetime.now().timestamp() - INDEXER_LOCK_PATH.stat().st_mtime
+        return age < 90 * 60
+    except Exception:
+        return False
+
+
 @app.route("/refresh", methods=["POST"])
 def refresh():
+    # Guard against double-launch: concurrent indexers would write the same
+    # inventory.json / details files and corrupt the data.
+    if _indexer_running():
+        return jsonify({"status": "already_running",
+                        "message": "データ収集が既に実行中です"}), 409
     emails = request.form.getlist("email")
     if _INDEXER_LOG.exists():
         _INDEXER_LOG.write_text("", encoding="utf-8")
@@ -857,7 +892,6 @@ def refresh():
 @app.route("/refresh/status")
 def refresh_status():
     import re
-    from datetime import datetime as _dt
     inv = _load_inventory()
     log_lines = []
     log_tail = ""
@@ -914,19 +948,7 @@ def refresh_status():
             if rate > 0:
                 eta_sec = int(remaining / rate)
 
-    running = False
-    try:
-        import psutil
-        for p in psutil.process_iter(["name", "cmdline"]):
-            cmd = p.info.get("cmdline") or []
-            if any("indexer.py" in str(c) for c in cmd):
-                running = True
-                break
-    except Exception:
-        if _INDEXER_LOG.exists() and inv.get("generated_at"):
-            log_mtime = _INDEXER_LOG.stat().st_mtime
-            inv_dt = _dt.fromisoformat(inv["generated_at"].replace("Z", "+00:00"))
-            running = log_mtime > inv_dt.timestamp() + 5
+    running = _indexer_running()
 
     pct = round(done_props / total_props_estimate * 100, 1) if total_props_estimate else 0
     return jsonify({

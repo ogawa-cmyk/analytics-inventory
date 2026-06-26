@@ -60,14 +60,13 @@
   .pill-tabs button.active{color:var(--g-primary);border-bottom-color:var(--g-primary);font-weight:600}
   .pill-pane{display:none}
   .pill-pane.active{display:block}
+  .home-3col{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:900px){.home-3col{grid-template-columns:1fr}}
 </style>
 
 {# ====================================================================
    Section 1: ヒーロー（常時表示）
    ==================================================================== #}
-
-{% if duplicate_mids and (alerts.error_props or gtm_alerts.error_count) %}
-{% endif %}
 
 <div class="health-grid">
 
@@ -356,7 +355,7 @@
 <details class="section">
   <summary>🤖 AI分析の活用状況<span class="count">カバレッジ GA4 {{ ai_cov_prop }}件 / GTM {{ ai_cov_gtm }}件</span></summary>
   <div class="section-body">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+    <div class="home-3col">
       <div>
         <p class="small" style="margin:0 0 4px;font-weight:600">直近の自動診断</p>
         {% if auto_state %}
@@ -419,7 +418,7 @@
 <details class="section">
   <summary>⭐ お気に入り・タグ・横断情報<span class="count">★{{ fav_props|length + fav_conts|length }} / タグ{{ tag_dist|length }}種 / MID重複{{ duplicate_mids|length }}</span></summary>
   <div class="section-body">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+    <div class="home-3col">
       <div>
         <h3 style="font-size:13px;color:var(--g-primary-dark);margin:0 0 8px">お気に入り ({{ fav_props|length + fav_conts|length }})</h3>
         {% if fav_props or fav_conts %}
@@ -722,7 +721,8 @@ async function quickRefresh(){
   const ok = await confirmModal('全アカウントを再収集します。完了まで数十分かかります。続行しますか？', {okLabel:'▶ 実行'});
   if(!ok) return;
   try {
-    await fetch('/refresh', {method:'POST'});
+    const r = await fetch('/refresh', {method:'POST'});
+    if(r.status === 409){ showToast('データ収集は既に実行中です', 'warn'); return; }
     showToast('データ収集を開始しました');
   } catch(e){ showToast('失敗: ' + e.message, 'error'); }
 }
