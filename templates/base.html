@@ -197,6 +197,11 @@
   .tag-chip{display:inline-block;background:var(--g-primary-light);color:var(--g-primary-dark);padding:2px 7px;border-radius:10px;font-size:10px;margin:0 3px 2px 0;border:1px solid var(--g-border)}
   .fav-star{cursor:pointer;color:#bdbdbd;font-size:16px}
   .fav-star.on{color:#ffb300}
+  button.fav-star{background:none;border:none;padding:0;font:inherit;line-height:1}
+
+  /* ===== Sort indicator ===== */
+  th[data-sortdir="asc"]::after{content:" ▲";font-size:9px;opacity:.7}
+  th[data-sortdir="desc"]::after{content:" ▼";font-size:9px;opacity:.7}
   .diff-up{color:#2e7d32;font-weight:600}
   .diff-down{color:var(--g-error);font-weight:600}
   .diff-neutral{color:#666}
@@ -370,8 +375,8 @@
 <div id="toast" class="toast"></div>
 
 <div class="modal-bd" id="modal-bd" onclick="if(event.target===this) closeModal()">
-  <div class="modal" id="modal">
-    <div class="modal-h"><h3 id="modal-title"></h3><button class="close-x" onclick="closeModal()">×</button></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+    <div class="modal-h"><h3 id="modal-title"></h3><button class="close-x" onclick="closeModal()" aria-label="閉じる">×</button></div>
     <div class="modal-b" id="modal-body"></div>
     <div class="modal-f" id="modal-footer"></div>
   </div>
@@ -392,9 +397,13 @@ window.escapeHtml = function(s){ return String(s ?? '').replace(/[&<>"']/g, c =>
 
 /* ========== Modal ========== */
 let _modalResolve = null;
+let _modalPrevFocus = null;
+let _modalTrapHandler = null;
+
 window.showModal = function({title, body, actions, danger}){
   return new Promise(resolve => {
     _modalResolve = resolve;
+    _modalPrevFocus = document.activeElement;
     document.getElementById('modal-title').textContent = title || '';
     document.getElementById('modal-body').innerHTML = body || '';
     const f = document.getElementById('modal-footer');
@@ -407,10 +416,29 @@ window.showModal = function({title, body, actions, danger}){
       f.appendChild(b);
     });
     document.getElementById('modal-bd').classList.add('show');
+    // Move focus into modal
+    const modal = document.getElementById('modal');
+    const firstFocusable = modal.querySelector('button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])');
+    requestAnimationFrame(() => { (firstFocusable || modal).focus(); });
+    // Focus trap + Escape
+    if(_modalTrapHandler) document.removeEventListener('keydown', _modalTrapHandler);
+    _modalTrapHandler = function(e){
+      if(!document.getElementById('modal-bd').classList.contains('show')) return;
+      if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeModal(false); return; }
+      if(e.key !== 'Tab') return;
+      const focusable = [...modal.querySelectorAll('button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+      if(!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if(e.shiftKey){ if(document.activeElement === first){ e.preventDefault(); last.focus(); } }
+      else { if(document.activeElement === last){ e.preventDefault(); first.focus(); } }
+    };
+    document.addEventListener('keydown', _modalTrapHandler);
   });
 };
 window.closeModal = function(value){
   document.getElementById('modal-bd').classList.remove('show');
+  if(_modalTrapHandler){ document.removeEventListener('keydown', _modalTrapHandler); _modalTrapHandler = null; }
+  if(_modalPrevFocus && _modalPrevFocus.focus){ try{ _modalPrevFocus.focus(); }catch(e){} _modalPrevFocus = null; }
   if(_modalResolve){ _modalResolve(value); _modalResolve = null; }
 };
 window.confirmModal = function(msg, opts){

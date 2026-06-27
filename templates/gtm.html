@@ -84,7 +84,7 @@
       data-tagcount="{{ c.tag_count }}"
       data-triggercount="{{ c.trigger_count }}"
       data-varcount="{{ c.variable_count }}">
-      <td><span class="fav-star {% if c.ann_favorite %}on{% endif %}" data-on="{{ '1' if c.ann_favorite else '0' }}" onclick="toggleFavGtm(this, '{{ c.container_id }}')">★</span></td>
+      <td><button type="button" class="fav-star {% if c.ann_favorite %}on{% endif %}" data-on="{{ '1' if c.ann_favorite else '0' }}" onclick="toggleFavGtm(this, '{{ c.container_id }}')" aria-label="{{ 'お気に入り解除' if c.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if c.ann_favorite else 'false' }}">★</button></td>
       <td class="small">{{ c.auth_email }}</td>
       <td>{{ c.account_name }}</td>
       <td>{% if has_detail.get(c.container_id) %}<a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
@@ -115,6 +115,7 @@
   </tbody>
 </table>
 </div>
+<div id="tbl-empty" class="empty" style="display:none"><span class="icon">🔍</span>フィルタに一致するコンテナがありません<div class="hint">条件を変えてお試しください</div></div>
 
 <script>
 const q = document.getElementById('q');
@@ -145,6 +146,8 @@ function applyFilter(){
   }
   const hasFilter = s || ef.value || af.value || gf.value || gradef.value || tagf.value || ff.value;
   cnt.textContent = hasFilter ? `${shown} / ${total} 件` : `${total} 件`;
+  const emptyEl = document.getElementById('tbl-empty');
+  if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
 [q, ef, af, gf, gradef, tagf, ff].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
@@ -156,13 +159,14 @@ async function toggleFavGtm(el, cid){
     el.dataset.on = newVal ? '1' : '0';
     el.classList.toggle('on', newVal);
     el.closest('tr').dataset.fav = newVal ? 'yes' : 'no';
+    el.setAttribute('aria-pressed', newVal ? 'true' : 'false');
+    el.setAttribute('aria-label', newVal ? 'お気に入り解除' : 'お気に入りに追加');
     showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
   } catch(e){ showToast('失敗'); }
 }
 
 const sortDir = {};
 tbl.tHead.querySelectorAll('th').forEach((th, i) => {
-  th.style.cursor = 'pointer';
   th.addEventListener('click', () => {
     const dir = sortDir[i] = !sortDir[i];
     const type = th.dataset.type || 'str';
@@ -178,12 +182,8 @@ tbl.tHead.querySelectorAll('th').forEach((th, i) => {
       bv = b.cells[i].innerText.trim().toLowerCase();
       return dir ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-    tbl.tHead.querySelectorAll('th').forEach(x => x.dataset.sortIcon = '');
-    th.dataset.sortIcon = dir ? '▲' : '▼';
-    tbl.tHead.querySelectorAll('th').forEach(x => {
-      const base = x.textContent.replace(/[▲▼]\s*$/, '').trimEnd();
-      x.textContent = x.dataset.sortIcon ? base + ' ' + x.dataset.sortIcon : base;
-    });
+    tbl.tHead.querySelectorAll('th').forEach(x => delete x.dataset.sortdir);
+    th.dataset.sortdir = dir ? 'asc' : 'desc';
     rows.forEach(r => tbl.tBodies[0].appendChild(r));
   });
 });

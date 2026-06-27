@@ -78,7 +78,7 @@
       data-fav="{{ 'yes' if p.ann_favorite else 'no' }}"
       data-search="{{ (p.display_name ~ ' ' ~ p.property_id ~ ' ' ~ p.account_display_name ~ ' ' ~ (p.ann_tags or [])|join(' ') ~ ' ' ~ (p.ann_note or ''))|lower }}">
       <td><input type="checkbox" class="row-check" value="{{ p.property_id }}" onchange="updateSelCount()"></td>
-      <td><span class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')">★</span></td>
+      <td><button type="button" class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')" aria-label="{{ 'お気に入り解除' if p.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if p.ann_favorite else 'false' }}">★</button></td>
       <td class="small">{{ p.auth_email }}</td>
       <td>{{ p.account_display_name }}</td>
       <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a></td>
@@ -112,6 +112,7 @@
   </tbody>
 </table>
 </div>
+<div id="tbl-empty" class="empty" style="display:none"><span class="icon">🔍</span>フィルタに一致するプロパティがありません<div class="hint">条件を変えてお試しください</div></div>
 
 <script>
 const tbl = document.getElementById('tbl');
@@ -124,6 +125,7 @@ const tagf = document.getElementById('tag-filter');
 const ff = document.getElementById('fav-filter');
 function apply(){
   const s = q.value.toLowerCase();
+  let shown = 0;
   for(const row of tbl.tBodies[0].rows){
     const okS = !s || row.dataset.search.includes(s);
     const okT = !tf.value || row.dataset.track === tf.value;
@@ -132,8 +134,12 @@ function apply(){
     const okG = !gf.value || row.dataset.grade === gf.value;
     const okTag = !tagf.value || ('|'+row.dataset.tags+'|').includes('|'+tagf.value.toLowerCase()+'|');
     const okF = !ff.value || row.dataset.fav === ff.value;
-    row.style.display = (okS && okT && okE && okM && okG && okTag && okF) ? '' : 'none';
+    const ok = okS && okT && okE && okM && okG && okTag && okF;
+    row.style.display = ok ? '' : 'none';
+    if(ok) shown++;
   }
+  const emptyEl = document.getElementById('tbl-empty');
+  if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
 [q,tf,ef,em,gf,tagf,ff].forEach(el => el.addEventListener('input', apply));
 
@@ -154,6 +160,8 @@ tbl.tHead.querySelectorAll('th').forEach((th, i) => {
       }
       return dir ? av.localeCompare(bv) : bv.localeCompare(av);
     });
+    tbl.tHead.querySelectorAll('th').forEach(x => delete x.dataset.sortdir);
+    th.dataset.sortdir = dir ? 'asc' : 'desc';
     rows.forEach(r => tbl.tBodies[0].appendChild(r));
   });
 });
@@ -260,6 +268,8 @@ async function toggleFav(el, pid){
     el.dataset.on = newVal ? '1' : '0';
     el.classList.toggle('on', newVal);
     el.closest('tr').dataset.fav = newVal ? 'yes' : 'no';
+    el.setAttribute('aria-pressed', newVal ? 'true' : 'false');
+    el.setAttribute('aria-label', newVal ? 'お気に入り解除' : 'お気に入りに追加');
     showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
   } catch(e){
     showToast('保存失敗: ' + e.message);

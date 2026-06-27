@@ -127,6 +127,7 @@
   </tbody>
 </table>
 </div>
+<div id="tbl-empty" class="empty" style="display:none"><span class="icon">🔍</span>フィルタに一致するサイトがありません<div class="hint">条件を変えてお試しください</div></div>
 
 <script>
 const q = document.getElementById('q');
@@ -152,13 +153,14 @@ function applyFilter(){
     if(ok) shown++;
   }
   cnt.textContent = (s||ef.value||tf.value||gf.value||lf.value) ? `${shown} / ${total} 件` : `${total} 件`;
+  const emptyEl = document.getElementById('tbl-empty');
+  if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
 [q, ef, tf, gf, lf].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
 
 const sortDir = {};
 tbl.tHead.querySelectorAll('th').forEach((th, i) => {
-  th.style.cursor = 'pointer';
   th.addEventListener('click', () => {
     const dir = sortDir[i] = !sortDir[i];
     const type = th.dataset.type || 'str';
@@ -173,6 +175,8 @@ tbl.tHead.querySelectorAll('th').forEach((th, i) => {
       }
       return dir ? av.localeCompare(bv) : bv.localeCompare(av);
     });
+    tbl.tHead.querySelectorAll('th').forEach(x => delete x.dataset.sortdir);
+    th.dataset.sortdir = dir ? 'asc' : 'desc';
     rows.forEach(r => tbl.tBodies[0].appendChild(r));
   });
 });

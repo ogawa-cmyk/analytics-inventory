@@ -69,11 +69,12 @@ function toggleAll(kind, open){
   for(const el of items){ el.open = anyClosed; }
   event.target.textContent = anyClosed ? '全て折りたたむ' : '全て展開';
 }
-function openExt(urlTpl, btn){
+async function openExt(urlTpl, btn){
   const text = btn.dataset.prompt;
   const url = urlTpl.replace('{q}', encodeURIComponent(text));
   if(url.length > 7500){
-    if(!confirm(`URL長 ${url.length} 文字。AI側で切り捨てられる可能性があります。続行しますか？（推奨: コピーして貼り付け）`)) return;
+    const ok = await confirmModal(`URL長 ${url.length} 文字。AI側で切り捨てられる可能性があります。続行しますか？（推奨: コピーして貼り付け）`);
+    if(!ok) return;
   }
   window.open(url, '_blank');
 }
