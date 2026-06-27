@@ -269,7 +269,7 @@
   <h2>データ更新の仕組み</h2>
   <h3>自動更新（3日ごと）</h3>
   <ul style="font-size:13px;line-height:1.8">
-    <li>Windowsタスクスケジューラの <code>GA4-Inventory-AutoRefresh</code> が3日ごとに <code>run_indexer.bat</code> を実行</li>
+    <li>Windowsタスクスケジューラの <code>Analytics-Inventory-AutoRefresh</code> が3日ごとに <code>run_indexer.bat</code> を実行</li>
     <li>すべてのアカウントを巡回し、データを <code>data/inventory.json</code> に保存</li>
     <li>収集完了後、<code>auto_diagnose.py</code> が自動的に走り、新規アラート発生プロパティを最大15件AI分析</li>
     <li>所要時間: 20〜45分（プロパティ数・SCサイト数に依存）</li>
@@ -288,8 +288,8 @@
 
   <h3>スケジュール変更</h3>
   <p style="font-size:13px">PowerShell/cmdで間隔変更可:</p>
-  <pre style="font-size:11px">schtasks /Delete /TN GA4-Inventory-AutoRefresh /F
-schtasks /Create /TN GA4-Inventory-AutoRefresh /TR "C:\Users\ogawa\GA4-Inventory\run_indexer.bat" /SC DAILY /MO 3 /ST 03:00 /F</pre>
+  <pre style="font-size:11px">schtasks /Delete /TN Analytics-Inventory-AutoRefresh /F
+schtasks /Create /TN Analytics-Inventory-AutoRefresh /TR "C:\Users\&lt;ユーザー名&gt;\analytics-inventory\run_indexer.bat" /SC DAILY /MO 3 /ST 03:00 /F</pre>
 </div>
 
 <div class="card help-section" id="ai">

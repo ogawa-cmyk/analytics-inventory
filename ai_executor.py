@@ -183,7 +183,7 @@ def analyze_property(detail: dict, linked_containers: list, model: str = DEFAULT
 
     key = _load_env_key()
     if not key:
-        return {"error": "ANTHROPIC_API_KEY が見つかりません。GA4-Inventory/.env に設定してください。"}
+        return {"error": "ANTHROPIC_API_KEY が見つかりません。ツールフォルダ直下の .env に設定してください。"}
 
     client = Anthropic(api_key=key)
     user_msg = _build_user_prompt(detail, linked_containers)
@@ -439,7 +439,7 @@ def analyze_container(container: dict, live: dict, linked_props: list,
 
     key = _load_env_key()
     if not key:
-        return {"error": "ANTHROPIC_API_KEY が見つかりません。GA4-Inventory/.env に設定してください。"}
+        return {"error": "ANTHROPIC_API_KEY が見つかりません。ツールフォルダ直下の .env に設定してください。"}
 
     client = Anthropic(api_key=key)
     user_msg = _build_gtm_prompt(container, live, linked_props)
