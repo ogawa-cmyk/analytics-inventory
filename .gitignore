@@ -34,3 +34,6 @@ Thumbs.db
 # --- Local dev artifacts ---
 *.local
 *.bak
+
+# --- Demo data (generated at runtime by demo_server.py) ---
+demo_data/

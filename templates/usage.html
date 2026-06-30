@@ -550,6 +550,16 @@
   </div>
 </div>
 
-<p class="small" style="margin-top:20px;text-align:center;color:var(--g-text-muted)">用語の詳細は <a href="/help" class="prop">ヘルプ・用語集</a> へ。</p>
+<div class="card" style="margin-top:18px;text-align:center;padding:24px 18px">
+  <p style="font-size:15px;font-weight:600;margin:0 0 6px">操作マニュアル PDF</p>
+  <p style="font-size:13px;color:var(--g-text-muted);margin:0 0 14px">スクリーンショット付きの PDF マニュアルをダウンロードできます。</p>
+  <a href="/static/manual.pdf" download="GA4-Inventory-Manual.pdf"
+     style="display:inline-flex;align-items:center;gap:8px;background:var(--g-primary);color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">
+    ⬇ 操作マニュアル PDF をダウンロード
+  </a>
+  <p class="small" style="margin:10px 0 0;color:var(--g-text-muted)">再生成コマンド: <code>python scripts/build_manual_pdf.py</code></p>
+</div>
+
+<p class="small" style="margin-top:12px;text-align:center;color:var(--g-text-muted)">用語の詳細は <a href="/help" class="prop">ヘルプ・用語集</a> へ。</p>
 
 {% endblock %}
