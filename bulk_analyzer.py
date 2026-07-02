@@ -5,6 +5,7 @@ Job state lives in data/bulk_jobs/{job_id}.json so it survives restarts.
 from __future__ import annotations
 import json
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path

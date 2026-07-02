@@ -205,7 +205,7 @@ def analyze_property(detail: dict, linked_containers: list, model: str = DEFAULT
         except Exception as e:
             last_err = f"API呼び出しエラー(attempt {attempt+1}): {type(e).__name__}: {str(e)[:300]}"
             continue
-        raw = "".join(b.text for b in resp.content if hasattr(b, "text"))
+        raw = "".join((b.text or "") for b in resp.content if hasattr(b, "text"))
         last_raw = raw
         try:
             parsed = _extract_json(raw)
@@ -263,8 +263,11 @@ def list_runs(pid: str) -> list[dict]:
         return []
     out = []
     for p in sorted(pdir.glob("*.json"), reverse=True):
-        out.append({"file": p.name, "stamp": p.stem,
-                    "mtime": datetime.fromtimestamp(p.stat().st_mtime).isoformat()})
+        try:
+            mtime = datetime.fromtimestamp(p.stat().st_mtime).isoformat()
+        except Exception:
+            mtime = None
+        out.append({"file": p.name, "stamp": p.stem, "mtime": mtime})
     return out
 
 
@@ -461,7 +464,7 @@ def analyze_container(container: dict, live: dict, linked_props: list,
         except Exception as e:
             last_err = f"API呼び出しエラー(attempt {attempt+1}): {type(e).__name__}: {str(e)[:300]}"
             continue
-        raw = "".join(b.text for b in resp.content if hasattr(b, "text"))
+        raw = "".join((b.text or "") for b in resp.content if hasattr(b, "text"))
         last_raw = raw
         try:
             parsed = _extract_json(raw)
@@ -510,8 +513,11 @@ def list_gtm_runs(cid: str) -> list[dict]:
         return []
     out = []
     for p in sorted(cdir.glob("*.json"), reverse=True):
-        out.append({"file": p.name, "stamp": p.stem,
-                    "mtime": datetime.fromtimestamp(p.stat().st_mtime).isoformat()})
+        try:
+            mtime = datetime.fromtimestamp(p.stat().st_mtime).isoformat()
+        except Exception:
+            mtime = None
+        out.append({"file": p.name, "stamp": p.stem, "mtime": mtime})
     return out
 
 

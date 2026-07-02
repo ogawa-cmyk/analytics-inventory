@@ -691,7 +691,7 @@ def _csv_response(rows: list[list], filename: str) -> Response:
     for r in rows:
         w.writerow(r)
     return Response(buf.getvalue(), mimetype="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"})
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.route("/export/properties.csv")
