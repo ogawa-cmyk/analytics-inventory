@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}変化ログ — Analytics Inventory{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>変化ログ</span></nav>
+{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 14px;flex-wrap:wrap">
+  <h1 style="font-size:18px;margin:0">🔔 変化ログ — スキャン間の設定・数値変化</h1>
+  <a href="/settings/notifications" class="btn">✉ 週次メール通知の設定</a>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi" style="border-left-color:var(--g-error)"><b style="color:var(--g-error)">{{ counts.critical }}</b><span>重大（計測停止・KE削除等）</span></div>
+  <div class="kpi" style="border-left-color:var(--g-warn)"><b style="color:var(--g-warn)">{{ counts.warn }}</b><span>注意（急減・タグ減少等）</span></div>
+  <div class="kpi"><b>{{ counts.info }}</b><span>情報（追加・公開等）</span></div>
+  <div class="kpi"><b>{{ counts.total }}</b><span>合計イベント</span></div>
+</div>
+
+{% if computed_live %}
+<div class="alert-banner">変化ログはまだ蓄積されていないため、最新2スナップショットから直接計算した結果を表示しています。次回のデータ収集から自動的にログへ記録されます。</div>
+{% endif %}
+
+{% if events %}
+<div class="card">
+  <h2>変化イベント一覧</h2>
+  <div class="filters">
+    <input type="search" id="ch-q" placeholder="検索（名前・メッセージ）">
+    <select id="ch-sev">
+      <option value="">重要度: すべて</option>
+      <option value="critical">重大</option>
+      <option value="warn">注意</option>
+      <option value="info">情報</option>
+    </select>
+    <select id="ch-kind">
+      <option value="">種別: すべて</option>
+      <option value="ga4">GA4</option>
+      <option value="gtm">GTM</option>
+      <option value="sc">Search Console</option>
+    </select>
+    <span class="small" id="ch-cnt"></span>
+  </div>
+
+  <div class="table-wrap scrollable">
+  <table id="ch-tbl">
+    <thead><tr>
+      <th>検出日時</th>
+      <th>重要度</th>
+      <th>種別</th>
+      <th>対象</th>
+      <th>変化内容</th>
+    </tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr data-sev="{{ e.severity }}" data-kind="{{ e.kind }}"
+          data-search="{{ ((e.entity_name or '') ~ ' ' ~ (e.message or ''))|lower }}">
+        <td class="small" style="white-space:nowrap">{{ (e.detected_at or e.snapshot or '')[:16].replace('T',' ') }}</td>
+        <td>
+          {% if e.severity == 'critical' %}<span class="badge b-ng">重大</span>
+          {% elif e.severity == 'warn' %}<span class="badge" style="background:var(--g-warn-bg);color:var(--g-warn)">注意</span>
+          {% else %}<span class="badge b-na">情報</span>{% endif %}
+        </td>
+        <td class="small">{{ {'ga4':'GA4','gtm':'GTM','sc':'SC'}.get(e.kind, e.kind) }}</td>
+        <td>
+          {% if e.kind == 'ga4' %}<a class="prop" href="/property/{{ e.entity_id }}">{{ e.entity_name }}</a>
+          {% elif e.kind == 'gtm' %}<a class="prop" href="/gtm/{{ e.entity_id }}/tags">{{ e.entity_name }}</a>
+          {% elif e.kind == 'sc' %}<a class="prop" href="/sc/{{ e.entity_id }}">{{ e.entity_name }}</a>
+          {% else %}{{ e.entity_name }}{% endif %}
+        </td>
+        <td class="small" style="max-width:500px">
+          {% if e.severity == 'critical' %}<span class="diff-down">{{ e.message }}</span>
+          {% else %}{{ e.message }}{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="small" style="margin-top:12px">
+    💡 変化はデータ収集（⟳ 更新）のたびに前回スナップショットと比較して自動記録されます。
+    週次メールにも直近7日分の変化が含まれます。
+  </p>
+</div>
+
+<script>
+const cq = document.getElementById('ch-q');
+const csv = document.getElementById('ch-sev');
+const ckd = document.getElementById('ch-kind');
+const ctb = document.getElementById('ch-tbl');
+const ccnt = document.getElementById('ch-cnt');
+function applyCh(){
+  const s = cq.value.toLowerCase().trim();
+  let shown = 0;
+  for(const r of ctb.tBodies[0].rows){
+    const ok = (!s || r.dataset.search.includes(s))
+      && (!csv.value || r.dataset.sev === csv.value)
+      && (!ckd.value || r.dataset.kind === ckd.value);
+    r.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  }
+  ccnt.textContent = (s||csv.value||ckd.value) ? `${shown} / {{ events|length }} 件` : `{{ events|length }} 件`;
+}
+[cq, csv, ckd].forEach(el => el.addEventListener('input', applyCh));
+applyCh();
+</script>
+{% else %}
+<div class="empty">
+  <span class="icon">🔍</span>
+  変化イベントはまだありません
+  <div class="hint">
+    {% if snapshot_count < 2 %}スナップショットが2件以上必要です（現在: {{ snapshot_count }}件）。データ収集を2回以上実行すると変化が検出されます。
+    {% else %}前回スキャンから変化は検出されていません。{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

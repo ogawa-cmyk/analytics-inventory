@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% set label = {'tag':'タグ','trigger':'トリガー','variable':'変数'}[kind] %}
+{% block title %}{{ container.name }} - {{ label }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/gtm">GTM</a><span class="sep">/</span><a href="/gtm/{{ cid }}/tag">{{ container.name }}</a><span class="sep">/</span><span>{{ label }}</span></nav>
+{% endblock %}
+
+{% block main_wrapper %}
+<main class="with-toc">
+  <aside class="toc-side">
+    <h3>このページの目次</h3>
+    <a href="#sec-ai">🤖 AI分析</a>
+    <a href="#sec-tabs">タグ/トリガー/変数</a>
+  </aside>
+  <div class="main-col">
+{% block body %}
+<h1 style="margin:6px 0 4px">{{ container.name or cid }}
+  <span class="small">（{{ container.public_id }} / {{ container.account_name }} / {{ container.auth_email }}）</span>
+</h1>
+<p class="small" style="margin:0 0 14px">
+  バージョン: {{ live.name or '—' }} (id {{ live.containerVersionId or '—' }})
+  ・公開済み: {{ '公開' if live.published else '非公開' }}
+  {% if linked_props %}
+    ・🔗 紐づくGA4:
+    {% for p in linked_props %}<a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+</p>
+
+<div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid var(--g-ai)">
+  <h2 style="color:var(--g-ai);border-bottom-color:var(--g-ai-bg)">🤖 GTM AI分析・アクションプラン生成</h2>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <label class="small">モデル:</label>
+    <select id="ai-model" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
+      <option value="claude-sonnet-4-6">Sonnet 4.6（標準・速い）</option>
+      <option value="claude-opus-4-8">Opus 4.8（深い分析）</option>
+    </select>
+    <input id="ai-extra" type="text" placeholder="追加指示（任意）例: 古いタグ整理に重点" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
+    <button class="btn" id="ai-run-btn" onclick="runAnalysis()" style="background:var(--g-ai);color:#fff;border-color:var(--g-ai)">▶ 分析実行</button>
+    {% if ai_runs %}
+    <select id="ai-history" onchange="loadHistory(this.value)" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px;margin-left:auto">
+      <option value="">過去の分析 ({{ ai_runs|length }}件)</option>
+      {% for r in ai_runs %}<option value="{{ r.stamp }}">{{ r.mtime[:16].replace('T',' ') }}</option>{% endfor %}
+    </select>
+    {% endif %}
+  </div>
+  <div id="ai-result" style="min-height:30px">
+    {% if latest_ai_run and latest_ai_run.parsed %}
+      <p class="small">前回分析: {{ latest_ai_run.parsed._meta.generated_at[:19].replace('T',' ') if latest_ai_run.parsed._meta else '' }} （{{ latest_ai_run.parsed._meta.model if latest_ai_run.parsed._meta else '' }}）— 下に表示中。最新化するには「▶ 分析実行」を押してください。</p>
+    {% else %}
+      <p class="small">「▶ 分析実行」を押すとClaude APIがコンテナを分析し、古いタグ・重複・未使用・命名規約などの課題リスト＋優先度付きアクションプランを生成します。各アクションには外部AIに作業を任せるための完成済みプロンプトも付きます。</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+const CID_AI = '{{ cid }}';
+function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/\n/g, '&#10;'); }
+function aiShowToast(msg){
+  let t = document.getElementById('ai-toast');
+  if(!t){ t = document.createElement('div'); t.id='ai-toast'; t.className='toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+function toggleAll(kind, open){
+  const cls = kind === 'issue' ? 'issue-acc' : 'action-acc';
+  const items = document.querySelectorAll('.' + cls);
+  const anyClosed = [...items].some(el => !el.open);
+  for(const el of items){ el.open = anyClosed; }
+  event.target.textContent = anyClosed ? '全て折りたたむ' : '全て展開';
+}
+async function openExt(urlTpl, btn){
+  const text = btn.dataset.prompt;
+  const url = urlTpl.replace('{q}', encodeURIComponent(text));
+  if(url.length > 7500){
+    const ok = await confirmModal(`URL長 ${url.length} 文字。AI側で切り捨てられる可能性があります。続行しますか？（推奨: コピーして貼り付け）`);
+    if(!ok) return;
+  }
+  window.open(url, '_blank');
+}
+async function copyText(btn){
+  try { await navigator.clipboard.writeText(btn.dataset.prompt); aiShowToast('📋 コピーしました'); }
+  catch(e){ aiShowToast('失敗'); }
+}
+
+function renderResult(parsed){
+  const el = document.getElementById('ai-result');
+  if(parsed.error){
+    el.innerHTML = `<div class="err">${escapeHtml(parsed.error)}</div>` + (parsed.raw ? `<details><summary class="small">生レスポンス表示</summary><pre>${escapeHtml(parsed.raw)}</pre></details>` : '');
+    return;
+  }
+  const meta = parsed._meta || {};
+  let h = '';
+  if(parsed.summary){
+    h += `<div style="background:var(--g-ai-bg);padding:12px 14px;border-radius:6px;border-left:3px solid var(--g-ai);margin-bottom:14px">
+      <b style="color:var(--g-ai)">所見</b>
+      <p style="margin:6px 0 0;font-size:13px;line-height:1.7">${escapeHtml(parsed.summary)}</p>
+    </div>`;
+  }
+  if(parsed.issues && parsed.issues.length){
+    h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">🚨 課題 (${parsed.issues.length})</h3>
+      <button class="btn" onclick="toggleAll('issue', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
+    </div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for(const i of parsed.issues){
+      const sevColor = i.severity === 'high' ? 'var(--g-error)' : i.severity === 'medium' ? 'var(--g-warn)' : '#78909c';
+      const sevBg = i.severity === 'high' ? 'var(--g-error-bg)' : i.severity === 'medium' ? 'var(--g-warn-bg)' : 'var(--g-row-alt)';
+      h += `<details class="ai-acc issue-acc" style="background:${sevBg};border-left:3px solid ${sevColor};border-radius:5px">
+        <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center">
+          <span style="color:${sevColor};font-size:11px">▶</span>
+          <span class="badge" style="background:${sevColor};color:#fff">${escapeHtml(i.severity || '?')}</span>
+          <span class="small">${escapeHtml(i.category || '')}</span>
+          <b style="font-size:13px">${escapeHtml(i.title || '')}</b>
+        </summary>
+        <p style="margin:0;padding:0 12px 12px;font-size:12px;line-height:1.6;color:var(--g-text-muted)">${escapeHtml(i.description || '')}</p>
+      </details>`;
+    }
+    h += '</div>';
+  }
+  if(parsed.action_plan && parsed.action_plan.length){
+    h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">✅ アクションプラン (${parsed.action_plan.length})</h3>
+      <button class="btn" onclick="toggleAll('action', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
+    </div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for(let idx=0; idx<parsed.action_plan.length; idx++){
+      const a = parsed.action_plan[idx];
+      h += `<details class="ai-acc action-acc" style="border:1px solid var(--g-border);border-radius:6px">
+        <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="color:var(--g-primary);font-size:11px">▶</span>
+          <span class="badge" style="background:var(--g-primary);color:#fff">優先度 ${a.priority || idx+1}</span>
+          <span class="small">${escapeHtml(a.estimated_effort || '')}</span>
+          ${a.delegate_to_ai && a.delegate_prompt ? '<span class="small" style="color:var(--g-ai)">🤖 委任可</span>' : ''}
+          <b style="font-size:13px">${escapeHtml(a.title || '')}</b>
+        </summary>
+        <div style="padding:0 14px 12px">
+          <p style="margin:6px 0 8px;font-size:12px;line-height:1.7;color:var(--g-text-muted);white-space:pre-wrap">${escapeHtml(a.description || '')}</p>`;
+      if(a.delegate_to_ai && a.delegate_prompt){
+        h += `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--g-ai);font-size:12px;font-weight:500">🤖 ${escapeHtml(a.delegate_label || 'このアクションを外部AIに依頼')} — プロンプトを開く</summary>
+          <textarea readonly rows="8" style="font-family:monospace;font-size:11px;line-height:1.5;margin-top:8px;background:var(--g-row-alt)">${escapeHtml(a.delegate_prompt)}</textarea>
+          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+            ${[{label:'Claude', url:'https://claude.ai/new?q={q}'},{label:'ChatGPT', url:'https://chatgpt.com/?q={q}'},{label:'Perplexity', url:'https://www.perplexity.ai/search/new?q={q}'},{label:'Gemini', url:'https://gemini.google.com/app?q={q}'},{label:'Grok', url:'https://grok.com/?q={q}'}].map(s => `<button class="btn" onclick="openExt('${s.url}', this)" data-prompt="${escapeAttr(a.delegate_prompt)}">${s.label}</button>`).join('')}
+            <button class="btn" onclick="copyText(this)" data-prompt="${escapeAttr(a.delegate_prompt)}" style="margin-left:auto">📋 コピー</button>
+          </div>
+        </details>`;
+      }
+      h += '</div></details>';
+    }
+    h += '</div>';
+  }
+  if(meta.input_tokens || meta.output_tokens){
+    h += `<p class="small" style="margin-top:12px;text-align:right">model: ${escapeHtml(meta.model || '')} ・ tokens: in ${meta.input_tokens||'-'} / out ${meta.output_tokens||'-'}</p>`;
+  }
+  el.innerHTML = h;
+}
+
+async function runAnalysis(){
+  const btn = document.getElementById('ai-run-btn');
+  const model = document.getElementById('ai-model').value;
+  const extra = document.getElementById('ai-extra').value;
+  const el = document.getElementById('ai-result');
+  btn.disabled = true;
+  btn.innerText = '⟳ 分析中… 30〜90秒';
+  el.innerHTML = '<div class="status-msg spin" style="background:var(--g-ai-bg);color:var(--g-ai);display:inline-block">Claudeが分析中…</div>';
+  try {
+    const r = await fetch(`/api/gtm/${CID_AI}/ai_analyze`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model, extra})
+    });
+    const data = await r.json();
+    renderResult(data);
+  } catch(e){
+    el.innerHTML = `<div class="err">通信エラー: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.innerText = '▶ 分析実行';
+  }
+}
+async function loadHistory(stamp){
+  if(!stamp) return;
+  const el = document.getElementById('ai-result');
+  el.innerHTML = '<div class="small">読み込み中…</div>';
+  try {
+    const r = await fetch(`/api/gtm/${CID_AI}/ai_run/${stamp}`);
+    const data = await r.json();
+    renderResult(data.parsed || {error: '解析データなし', raw: data.raw});
+  } catch(e){
+    el.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+{% if latest_ai_run and latest_ai_run.parsed %}
+renderResult({{ latest_ai_run.parsed | tojson }});
+{% endif %}
+</script>
+
+<div id="sec-tabs" class="card-section" style="margin-bottom:14px">
+  <a class="btn" href="/gtm/{{ cid }}/tag" {% if kind=='tag' %}style="background:var(--g-primary);color:#fff"{% endif %}>タグ ({{ live.tag|length if live.tag else 0 }})</a>
+  <a class="btn" href="/gtm/{{ cid }}/trigger" {% if kind=='trigger' %}style="background:var(--g-primary);color:#fff"{% endif %}>トリガー ({{ live.trigger|length if live.trigger else 0 }})</a>
+  <a class="btn" href="/gtm/{{ cid }}/variable" {% if kind=='variable' %}style="background:var(--g-primary);color:#fff"{% endif %}>変数 ({{ live.variable|length if live.variable else 0 }})</a>
+</div>
+
+<div class="filters">
+  <input type="search" id="q" placeholder="検索（名前/種類/パラメータ値）">
+</div>
+
+{% if kind == 'tag' %}
+<table id="tbl">
+  <thead><tr>
+    <th>名前</th><th>種類</th><th>状態</th><th>発火トリガー</th><th>主要パラメータ</th>
+  </tr></thead>
+  <tbody>
+  {% for t in items %}
+    {% set params = t.parameter or [] %}
+    {% set param_text = params|map(attribute='key')|join(', ') %}
+    <tr data-search="{{ ((t.name or '') ~ ' ' ~ (t.type or '') ~ ' ' ~ param_text)|lower }}">
+      <td>{{ t.name }}</td>
+      <td class="small">{{ t.type }}</td>
+      <td>
+        {% if t.paused %}<span class="badge b-ng">停止</span>
+        {% else %}<span class="badge b-ok">有効</span>{% endif %}
+      </td>
+      <td class="small">
+        {% for tid in t.firingTriggerId or [] %}
+          {% set tr = triggers_by_id.get(tid) %}
+          {{ tr.name if tr else tid }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </td>
+      <td class="small">
+        {% for p in params %}
+          <div><b>{{ p.key }}</b>: {{ (p.value or '')[:120] }}{% if p.value and p.value|length > 120 %}…{% endif %}</div>
+        {% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif kind == 'trigger' %}
+<table id="tbl">
+  <thead><tr>
+    <th>名前</th><th>種類</th><th>カスタムイベント名</th><th>フィルタ条件数</th>
+  </tr></thead>
+  <tbody>
+  {% for t in items %}
+    {% set ev_filter = t.customEventFilter or [] %}
+    {% set filt = t.filter or [] %}
+    {% set ce = '' %}
+    {% for f in ev_filter %}
+      {% for p in f.parameter or [] %}{% if p.key == 'arg1' %}{% set ce = p.value %}{% endif %}{% endfor %}
+    {% endfor %}
+    <tr data-search="{{ ((t.name or '') ~ ' ' ~ (t.type or '') ~ ' ' ~ ce)|lower }}">
+      <td>{{ t.name }}</td>
+      <td class="small">{{ t.type }}</td>
+      <td class="small">{{ ce or '—' }}</td>
+      <td class="small">{{ filt|length + ev_filter|length }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<table id="tbl">
+  <thead><tr>
+    <th>名前</th><th>種類</th><th>主要パラメータ</th>
+  </tr></thead>
+  <tbody>
+  {% for v in items %}
+    {% set params = v.parameter or [] %}
+    <tr data-search="{{ ((v.name or '') ~ ' ' ~ (v.type or ''))|lower }}">
+      <td>{{ v.name }}</td>
+      <td class="small">{{ v.type }}</td>
+      <td class="small">
+        {% for p in params %}
+          <div><b>{{ p.key }}</b>: {{ (p.value or '')[:120] }}{% if p.value and p.value|length > 120 %}…{% endif %}</div>
+        {% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+const q = document.getElementById('q');
+const tbl = document.getElementById('tbl');
+q.addEventListener('input', () => {
+  const s = q.value.toLowerCase();
+  for(const r of tbl.tBodies[0].rows){
+    r.style.display = (!s || r.dataset.search.includes(s)) ? '' : 'none';
+  }
+});
+</script>
+{% endblock %}
+  </div>
+</main>
+{% endblock %}

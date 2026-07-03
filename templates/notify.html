@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}週次メール通知設定 — Analytics Inventory{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/changes">変化ログ</a><span class="sep">/</span><span>通知設定</span></nav>
+{% endblock %}
+{% block body %}
+<h1 style="font-size:18px;margin:6px 0 14px">✉ 週次ヘルスサマリー メール通知設定</h1>
+
+{% if demo_mode %}
+<div class="alert-banner">🧪 デモ環境のため、設定の保存とメール送信は無効化されています。「メールをプレビュー」で内容イメージは確認できます。</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>通知設定</h2>
+    <form id="notify-form" onsubmit="return false">
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="nf-enabled" {% if settings.enabled %}checked{% endif %}>
+          <b>週次メール通知を有効にする</b>
+        </label>
+
+        <label>送信先メールアドレス（カンマ区切りで複数可）
+          <input type="text" id="nf-to" value="{{ settings.to|join(', ') }}"
+                 placeholder="you@example.com, team@example.com"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+        </label>
+
+        <div style="display:flex;gap:12px">
+          <label style="flex:1">送信曜日
+            <select id="nf-weekday" style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+              {% for i, name in [(0,'月曜'),(1,'火曜'),(2,'水曜'),(3,'木曜'),(4,'金曜'),(5,'土曜'),(6,'日曜')] %}
+              <option value="{{ i }}" {% if settings.weekday == i %}selected{% endif %}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label style="flex:1">送信時刻（時）
+            <select id="nf-hour" style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+              {% for h in range(24) %}
+              <option value="{{ h }}" {% if settings.hour == h %}selected{% endif %}>{{ h }}:00 以降</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <label>ダッシュボードURL（メール内リンク用）
+          <input type="text" id="nf-base-url" value="{{ settings.base_url }}"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+        </label>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>SMTP サーバー設定</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <div style="display:flex;gap:12px">
+        <label style="flex:2">SMTPホスト
+          <input type="text" id="nf-smtp-host" value="{{ settings.smtp_host }}" placeholder="smtp.gmail.com"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+        </label>
+        <label style="flex:1">ポート
+          <input type="number" id="nf-smtp-port" value="{{ settings.smtp_port }}"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+        </label>
+        <label style="flex:1">暗号化
+          <select id="nf-smtp-security" style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+            <option value="tls" {% if settings.smtp_security == 'tls' %}selected{% endif %}>STARTTLS (587)</option>
+            <option value="ssl" {% if settings.smtp_security == 'ssl' %}selected{% endif %}>SSL (465)</option>
+            <option value="none" {% if settings.smtp_security == 'none' %}selected{% endif %}>なし</option>
+          </select>
+        </label>
+      </div>
+      <label>SMTPユーザー名
+        <input type="text" id="nf-smtp-user" value="{{ settings.smtp_user }}" placeholder="you@gmail.com"
+               style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+      </label>
+      <label>SMTPパスワード {% if settings.smtp_password_set %}<span class="badge b-ok">設定済み</span>{% else %}<span class="badge b-na">未設定</span>{% endif %}
+        <input type="password" id="nf-smtp-password" value="" autocomplete="new-password"
+               placeholder="{% if settings.smtp_password_set %}変更する場合のみ入力{% else %}アプリパスワード等{% endif %}"
+               style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+      </label>
+      <label>送信元アドレス（空欄ならSMTPユーザー名を使用）
+        <input type="text" id="nf-from" value="{{ settings.from_addr }}"
+               style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+      </label>
+      <p class="small">
+        💡 Gmailの場合: <code>smtp.gmail.com</code> / 587 / STARTTLS。2段階認証＋<b>アプリパスワード</b>が必要です。<br>
+        💡 パスワードは環境変数 <code>SMTP_PASSWORD</code> でも指定できます（そちらが優先）。設定ファイルは data/ 配下でGit管理外です。
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn primary" onclick="saveNotify()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>💾 設定を保存</button>
+    <button class="btn" onclick="window.open('/api/notify/preview','_blank')">👁 メールをプレビュー</button>
+    <button class="btn" id="test-btn" onclick="sendTest()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>📨 テスト送信</button>
+    <span class="small" id="nf-status">
+      {% if settings.last_sent_at %}最終送信: {{ settings.last_sent_at[:16].replace('T',' ') }} (UTC){% else %}まだ送信されていません{% endif %}
+    </span>
+  </div>
+  <p class="small" style="margin-top:10px">
+    メール内容: KPIサマリー ＋ 直近7日間の変化（<a class="prop" href="/changes">変化ログ</a>）＋ 要対応のGA4プロパティ / GTMコンテナ / Search Consoleサイト（グレードD・F またはエラーアラートあり）。<br>
+    送信条件: 有効化済み ＋ 指定曜日の指定時刻以降 ＋ その週にまだ未送信の場合、サーバーが自動送信します（サーバー起動中のみ）。
+  </p>
+  <div class="alert-banner" style="margin-top:10px">
+    <b>💡 サーバーを常時起動しない運用（Windows）:</b>
+    <code>register_weekly_task.bat</code> をダブルクリックすると、タスクスケジューラに「毎日 送信時刻+5分 に <code>run_weekly_mail.bat</code> を実行」するタスクが登録されます。
+    スクリプト側が曜日と今週送信済みかを判定するため、送信曜日をここで変えても再登録は不要です（<b>送信時刻を変えた場合のみ再実行</b>）。
+    実行結果は <code>weekly_mail.log</code> に記録されます。手動テストは <code>python send_weekly_mail.py --test</code>。
+  </div>
+</div>
+
+<script>
+function collectSettings(){
+  return {
+    enabled: document.getElementById('nf-enabled').checked,
+    to: document.getElementById('nf-to').value,
+    weekday: document.getElementById('nf-weekday').value,
+    hour: document.getElementById('nf-hour').value,
+    base_url: document.getElementById('nf-base-url').value.trim(),
+    smtp_host: document.getElementById('nf-smtp-host').value.trim(),
+    smtp_port: document.getElementById('nf-smtp-port').value,
+    smtp_security: document.getElementById('nf-smtp-security').value,
+    smtp_user: document.getElementById('nf-smtp-user').value.trim(),
+    smtp_password: document.getElementById('nf-smtp-password').value,
+    from_addr: document.getElementById('nf-from').value.trim(),
+  };
+}
+async function saveNotify(){
+  try {
+    const r = await fetch('/api/notify/settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(collectSettings()),
+    });
+    const d = await r.json();
+    if(d.ok){ showToast('設定を保存しました'); document.getElementById('nf-smtp-password').value = ''; }
+    else { showToast('保存失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('保存失敗: ' + e.message, 'error'); }
+}
+async function sendTest(){
+  const btn = document.getElementById('test-btn');
+  const ok = await confirmModal('現在保存されている設定でテストメールを送信します。未保存の変更は反映されません。続行しますか？');
+  if(!ok) return;
+  btn.disabled = true;
+  showToast('送信中…');
+  try {
+    const r = await fetch('/api/notify/test', {method: 'POST'});
+    const d = await r.json();
+    if(d.ok){ showToast('テストメールを送信しました → ' + (d.to || []).join(', ')); }
+    else { showToast('送信失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('送信失敗: ' + e.message, 'error'); }
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

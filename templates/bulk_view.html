@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}一括AI分析 {{ job.job_id }}{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/bulk">一括AI分析</a><span class="sep">/</span><span>{{ job.label or job.job_id[:20] }}</span></nav>
+{% endblock %}
+{% block body %}
+<a class="back" href="/bulk">← ジョブ一覧</a>
+<h1 style="font-size:18px;margin:6px 0 14px">{{ job.label or job.job_id }}</h1>
+
+<div class="kpi-row">
+  <div class="kpi"><span>状態</span><b id="status">{{ job.status }}</b></div>
+  <div class="kpi"><span>進捗</span><b><span id="n-done">{{ job.results|length }}</span> / {{ job.property_ids|length }}</b></div>
+  <div class="kpi"><span>モデル</span><b style="font-size:14px">{{ job.model }}</b></div>
+  <div class="kpi"><span>推定コスト</span><b style="font-size:14px">${{ job.estimate.estimated_usd }} (¥{{ job.estimate.estimated_jpy|int }})</b></div>
+  {% if job.actual_usd is defined and job.actual_usd %}
+    <div class="kpi"><span>実コスト</span><b style="font-size:14px">${{ job.actual_usd }}</b></div>
+  {% endif %}
+</div>
+
+{% if job.status != 'done' %}
+<div class="alert-banner" id="progress-banner">
+  <span class="status-msg spin" style="background:#fff8e1;color:#bf6b00;display:inline-block">実行中… <span id="progress-msg">{{ job.results|length }}/{{ job.property_ids|length }}</span></span>
+</div>
+{% endif %}
+
+{% if top_issues %}
+<div class="card" style="margin-bottom:14px">
+  <h2>🔝 重要度の高い課題 TOP {{ top_issues|length }}（クロスプロパティ）</h2>
+  <table>
+    <thead><tr><th>severity</th><th>カテゴリ</th><th>課題</th><th>プロパティ</th></tr></thead>
+    <tbody>
+    {% for i in top_issues %}
+      <tr>
+        <td>
+          {% if i.severity == 'high' %}<span class="badge b-ng">{{ i.severity }}</span>
+          {% elif i.severity == 'medium' %}<span class="badge" style="background:#fff3e0;color:#ef6c00">{{ i.severity }}</span>
+          {% else %}<span class="badge b-na">{{ i.severity }}</span>{% endif %}
+        </td>
+        <td class="small">{{ i.category }}</td>
+        <td>{{ i.title }}</td>
+        <td class="small"><a class="prop" href="/property/{{ i.property_id }}">{{ i.display_name }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>プロパティ別結果</h2>
+  <div style="display:flex;flex-direction:column;gap:8px" id="results-container">
+  {% for r in job.results %}
+    <details class="ai-acc" {% if r.error %}style="border:1px solid var(--g-error);border-radius:6px;background:var(--g-error-bg)"{% else %}style="border:1px solid var(--g-border);border-radius:6px"{% endif %}>
+      <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="color:#2e7d32;font-size:11px">▶</span>
+        {% if r.health_grade %}<span class="grade-{{ r.health_grade }}">{{ r.health_grade }}</span>{% endif %}
+        <b style="font-size:13px">{{ r.display_name or r.property_id }}</b>
+        <span class="small">{{ r.auth_email or '' }}</span>
+        {% if r.error %}
+          <span class="badge b-ng" style="margin-left:auto">エラー</span>
+        {% else %}
+          <span class="small" style="margin-left:auto">課題 {{ r.issues|length }} / アクション {{ r.action_plan|length }}</span>
+        {% endif %}
+      </summary>
+      <div style="padding:0 14px 12px">
+        {% if r.error %}
+          <p class="err">{{ r.error }}</p>
+        {% else %}
+          {% if r.summary %}
+          <div style="background:var(--g-ai-bg);padding:10px;border-radius:5px;border-left:3px solid var(--g-ai);margin:8px 0">
+            <p style="margin:0;font-size:12px;line-height:1.7">{{ r.summary }}</p>
+          </div>
+          {% endif %}
+          {% if r.issues %}
+          <p style="margin:10px 0 4px;font-size:12px;color:var(--g-text-muted)"><b>課題</b></p>
+          <ul style="margin:0;padding-left:20px;font-size:12px;line-height:1.7">
+            {% for i in r.issues %}<li><b>[{{ i.severity }}]</b> {{ i.title }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if r.action_plan %}
+          <p style="margin:10px 0 4px;font-size:12px;color:var(--g-text-muted)"><b>アクションプラン</b></p>
+          <ul style="margin:0;padding-left:20px;font-size:12px;line-height:1.7">
+            {% for a in r.action_plan %}<li><b>P{{ a.priority }}</b> {{ a.title }}{% if a.delegate_to_ai %} <span style="color:var(--g-ai)">🤖委任可</span>{% endif %}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          <p class="small" style="margin-top:8px"><a class="prop" href="/property/{{ r.property_id }}">→ プロパティ詳細でフル結果を確認</a></p>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+</div>
+
+{% if job.status != 'done' %}
+<script>
+const JOB_ID = '{{ job.job_id }}';
+async function poll(){
+  try {
+    const r = await fetch(`/api/bulk/${JOB_ID}/status`);
+    const d = await r.json();
+    document.getElementById('status').textContent = d.status;
+    document.getElementById('n-done').textContent = d.n_done;
+    document.getElementById('progress-msg').textContent = `${d.n_done}/${d.n_total}` + (d.current_property ? ` （現在: ${d.current_property}）` : '');
+    if(d.status === 'done'){
+      location.reload();
+    } else {
+      setTimeout(poll, 6000);
+    }
+  } catch(e){
+    setTimeout(poll, 8000);
+  }
+}
+poll();
+</script>
+{% endif %}
+{% endblock %}

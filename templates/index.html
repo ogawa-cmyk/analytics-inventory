@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}GA4プロパティ一覧{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>GA4プロパティ</span></nav>
+{% endblock %}
+{% block body %}
+<div class="kpi-row">
+  <div class="kpi"><span>プロパティ</span><b>{{ properties|length }}</b></div>
+  <div class="kpi"><span>計測中</span><b>{{ properties|selectattr('is_tracked')|list|length }}</b></div>
+  <div class="kpi"><span>eコマース</span><b>{{ properties|selectattr('is_ecommerce')|list|length }}</b></div>
+  <div class="kpi"><span>お気に入り</span><b>{{ properties|selectattr('ann_favorite')|list|length }}</b></div>
+  <div class="kpi"><span>認証アカウント</span><b>{{ inv.accounts_scanned|length if inv.accounts_scanned else 0 }}</b></div>
+</div>
+
+<div class="filters">
+  <input type="search" id="q" placeholder="検索（プロパティ名/ID/アカウント/タグ/メモ）">
+  <select id="track-filter">
+    <option value="">計測: すべて</option>
+    <option value="yes">計測中のみ</option>
+    <option value="no">未計測のみ</option>
+  </select>
+  <select id="ecom-filter">
+    <option value="">eコマース: すべて</option>
+    <option value="yes">あり</option>
+    <option value="no">なし</option>
+  </select>
+  <select id="email-filter">
+    <option value="">アカウント: すべて</option>
+    {% for e in inv.accounts_scanned or [] %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+  </select>
+  <select id="grade-filter">
+    <option value="">グレード: すべて</option>
+    {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
+  </select>
+  <select id="tag-filter">
+    <option value="">タグ: すべて</option>
+    {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+  </select>
+  <select id="fav-filter">
+    <option value="">お気に入り: すべて</option>
+    <option value="yes">お気に入りのみ</option>
+  </select>
+  <button class="btn" onclick="selectAlerted()" style="margin-left:auto">⚠ アラート分を選択</button>
+  <button class="btn" id="bulk-btn" onclick="openBulkDialog()" disabled style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">🤖 一括AI分析 (<span id="sel-count">0</span>)</button>
+  <a href="/export/properties.csv" class="btn">⬇ CSV</a>
+</div>
+<div class="filter-chips" id="active-chips"></div>
+
+<div class="table-wrap">
+<table id="tbl">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="check-all" onclick="toggleAll(this.checked)"></th>
+      <th>★</th>
+      <th data-type="str">認証Gmail</th>
+      <th data-type="str">GA4アカウント</th>
+      <th data-type="str">プロパティ</th>
+      <th data-type="str">ID</th>
+      <th data-type="num">スコア</th>
+      <th data-type="str">計測</th>
+      <th data-type="num">キーイベント</th>
+      <th data-type="str">eコマース</th>
+      <th data-type="str">権限</th>
+      <th data-type="str">CD/CM</th>
+      <th data-type="num">Sessions(7d)</th>
+      <th data-type="str">タグ</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in properties %}
+    <tr
+      data-pid="{{ p.property_id }}"
+      data-email="{{ p.auth_email }}"
+      data-track="{{ 'yes' if p.is_tracked else 'no' }}"
+      data-ecom="{{ 'yes' if p.is_ecommerce else 'no' }}"
+      data-grade="{{ p.health_grade }}"
+      data-tags="{{ (p.ann_tags or [])|join('|')|lower }}"
+      data-fav="{{ 'yes' if p.ann_favorite else 'no' }}"
+      data-search="{{ (p.display_name ~ ' ' ~ p.property_id ~ ' ' ~ p.account_display_name ~ ' ' ~ (p.ann_tags or [])|join(' ') ~ ' ' ~ (p.ann_note or ''))|lower }}">
+      <td><input type="checkbox" class="row-check" value="{{ p.property_id }}" onchange="updateSelCount()"></td>
+      <td><button type="button" class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')" aria-label="{{ 'お気に入り解除' if p.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if p.ann_favorite else 'false' }}">★</button></td>
+      <td class="small">{{ p.auth_email }}</td>
+      <td>{{ p.account_display_name }}</td>
+      <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a></td>
+      <td class="small">{{ p.property_id }}</td>
+      <td><span class="grade-{{ p.health_grade }}">{{ p.health_grade }}</span> {{ p.health_score }}</td>
+      <td>
+        {% if p.is_tracked %}<span class="badge b-ok">計測中</span>
+        {% elif p.is_tracked == False %}<span class="badge b-ng">未計測</span>
+        {% else %}<span class="badge b-na">不明</span>{% endif %}
+      </td>
+      <td>{% if p.key_event_count > 0 %}<span class="badge b-ok">{{ p.key_event_count }}</span>{% else %}<span class="badge b-ng">0</span>{% endif %}</td>
+      <td>
+        {% if p.is_ecommerce %}<span class="badge b-ok">あり</span>
+        {% elif p.is_ecommerce == False %}<span class="badge b-na">なし</span>
+        {% else %}<span class="badge b-na">不明</span>{% endif %}
+      </td>
+      <td>
+        {% for r in p.my_roles %}
+          {% set short = r.split('/')[-1] %}
+          <span class="badge {% if 'admin' in short %}b-role-admin{% elif 'edit' in short %}b-role-edit{% else %}b-role{% endif %}">{{ short }}</span>
+        {% else %}<span class="small">—</span>{% endfor %}
+      </td>
+      <td class="small">{{ p.custom_dimension_count }} / {{ p.custom_metric_count }}</td>
+      <td class="small">{{ '{:,}'.format(p.sessions_7d) if p.sessions_7d is not none else '—' }}</td>
+      <td class="small">
+        {% for t in p.ann_tags or [] %}<span class="tag-chip">{{ t }}</span>{% endfor %}
+        {% if p.ann_note %}<span class="small" title="{{ p.ann_note }}">📝</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<div id="tbl-empty" class="empty" style="display:none"><span class="icon">🔍</span>フィルタに一致するプロパティがありません<div class="hint">条件を変えてお試しください</div></div>
+
+<script>
+const tbl = document.getElementById('tbl');
+const q = document.getElementById('q');
+const tf = document.getElementById('track-filter');
+const ef = document.getElementById('ecom-filter');
+const em = document.getElementById('email-filter');
+const gf = document.getElementById('grade-filter');
+const tagf = document.getElementById('tag-filter');
+const ff = document.getElementById('fav-filter');
+function apply(){
+  const s = q.value.toLowerCase();
+  let shown = 0;
+  for(const row of tbl.tBodies[0].rows){
+    const okS = !s || row.dataset.search.includes(s);
+    const okT = !tf.value || row.dataset.track === tf.value;
+    const okE = !ef.value || row.dataset.ecom === ef.value;
+    const okM = !em.value || row.dataset.email === em.value;
+    const okG = !gf.value || row.dataset.grade === gf.value;
+    const okTag = !tagf.value || ('|'+row.dataset.tags+'|').includes('|'+tagf.value.toLowerCase()+'|');
+    const okF = !ff.value || row.dataset.fav === ff.value;
+    const ok = okS && okT && okE && okM && okG && okTag && okF;
+    row.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  }
+  const emptyEl = document.getElementById('tbl-empty');
+  if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
+}
+[q,tf,ef,em,gf,tagf,ff].forEach(el => el.addEventListener('input', apply));
+
+let sortDir = {};
+tbl.tHead.querySelectorAll('th').forEach((th, i) => {
+  if(i === 0) return;
+  th.addEventListener('click', () => {
+    const dir = sortDir[i] = !sortDir[i];
+    const type = th.dataset.type || 'str';
+    const rows = [...tbl.tBodies[0].rows];
+    rows.sort((a,b) => {
+      const av = a.cells[i].innerText.trim();
+      const bv = b.cells[i].innerText.trim();
+      if(type === 'num'){
+        const an = parseFloat(av.replace(/[,A-Z]/g,'')) || 0;
+        const bn = parseFloat(bv.replace(/[,A-Z]/g,'')) || 0;
+        return dir ? an-bn : bn-an;
+      }
+      return dir ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    tbl.tHead.querySelectorAll('th').forEach(x => delete x.dataset.sortdir);
+    th.dataset.sortdir = dir ? 'asc' : 'desc';
+    rows.forEach(r => tbl.tBodies[0].appendChild(r));
+  });
+});
+
+function getSelectedIds(){
+  return [...document.querySelectorAll('.row-check:checked')]
+    .filter(c => c.closest('tr').style.display !== 'none')
+    .map(c => c.value);
+}
+function updateSelCount(){
+  const n = getSelectedIds().length;
+  document.getElementById('sel-count').textContent = n;
+  document.getElementById('bulk-btn').disabled = (n === 0);
+}
+function toggleAll(checked){
+  for(const c of document.querySelectorAll('.row-check')){
+    if(c.closest('tr').style.display !== 'none') c.checked = checked;
+  }
+  updateSelCount();
+}
+async function selectAlerted(){
+  try {
+    const r = await fetch('/api/bulk/select_alerted?max=20');
+    const d = await r.json();
+    const set = new Set(d.property_ids.map(String));
+    for(const c of document.querySelectorAll('.row-check')){
+      c.checked = set.has(c.value);
+    }
+    updateSelCount();
+    showToast(`⚠ ${d.n}件のアラートプロパティを選択`);
+  } catch(e){ showToast('失敗'); }
+}
+async function openBulkDialog(){
+  const ids = getSelectedIds();
+  if(!ids.length) return;
+  const body = `<p>${ids.length}件を一括AI分析します。モデルを選択してください:</p>
+    <div style="display:flex;gap:8px;flex-direction:column;margin-top:10px">
+      <label><input type="radio" name="bulkModel" value="claude-sonnet-4-6" checked> <b>Sonnet 4.6</b> <span class="small">標準・速い（推奨）</span></label>
+      <label><input type="radio" name="bulkModel" value="claude-opus-4-8"> <b>Opus 4.8</b> <span class="small">深い分析（約5倍コスト）</span></label>
+    </div>`;
+  const proceed = await showModal({
+    title: `一括AI分析 (${ids.length}件)`,
+    body,
+    actions: [{label:'キャンセル', value:false}, {label:'次へ', value:true, primary:true}],
+  });
+  if(!proceed) return;
+  const modelId = document.querySelector('input[name=bulkModel]:checked')?.value || 'claude-sonnet-4-6';
+  try {
+    const est = await fetch(`/api/bulk/estimate?n=${ids.length}&model=${modelId}`).then(r=>r.json());
+    const confirmBody = `<table>
+      <tr><td><b>対象</b></td><td>${est.n} 件</td></tr>
+      <tr><td><b>モデル</b></td><td>${escapeHtml(est.model)}</td></tr>
+      <tr><td><b>推定入力</b></td><td>${est.estimated_input_tokens.toLocaleString()} tokens</td></tr>
+      <tr><td><b>推定出力</b></td><td>${est.estimated_output_tokens.toLocaleString()} tokens</td></tr>
+      <tr><td><b>推定コスト</b></td><td><b style="color:var(--g-ai)">$${est.estimated_usd}</b> (約${est.estimated_jpy}円)</td></tr>
+      <tr><td><b>所要時間</b></td><td>約${Math.round(est.n*60/60)}分</td></tr>
+      </table>`;
+    const ok = await showModal({
+      title: '実行確認',
+      body: confirmBody,
+      actions: [{label:'戻る', value:false}, {label:'▶ 実行', value:true, primary:true}],
+    });
+    if(!ok) return;
+    const r = await fetch('/api/bulk/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({property_ids: ids, model: modelId})});
+    const d = await r.json();
+    if(d.error){ showToast(d.error, 'error'); return; }
+    location.href = `/bulk/${d.job_id}`;
+  } catch(e){ showToast('開始失敗: ' + e.message, 'error'); }
+}
+
+/* ==== Filter chips ==== */
+function renderActiveChips(){
+  const c = document.getElementById('active-chips');
+  if(!c) return;
+  const items = [
+    {label:'検索', el:q, clear:()=>{q.value=''}},
+    {label:'計測', el:tf, map:{yes:'計測中のみ', no:'未計測のみ'}, clear:()=>{tf.value=''}},
+    {label:'eコマース', el:ef, map:{yes:'あり', no:'なし'}, clear:()=>{ef.value=''}},
+    {label:'Gmail', el:em, clear:()=>{em.value=''}},
+    {label:'グレード', el:gf, clear:()=>{gf.value=''}},
+    {label:'タグ', el:tagf, clear:()=>{tagf.value=''}},
+    {label:'お気に入り', el:ff, map:{yes:'のみ'}, clear:()=>{ff.value=''}},
+  ];
+  c.innerHTML = items.filter(i => i.el && i.el.value).map(i => {
+    const v = i.map ? (i.map[i.el.value] || i.el.value) : i.el.value;
+    return `<span class="chip">${escapeHtml(i.label)}: ${escapeHtml(v)} <button onclick="(${i.clear.toString()})(); apply(); renderActiveChips();">×</button></span>`;
+  }).join('');
+}
+const _origApply = apply;
+window.apply = function(){ _origApply(); renderActiveChips(); };
+[q,tf,ef,em,gf,tagf,ff].forEach(el => el && el.addEventListener('input', renderActiveChips));
+renderActiveChips();
+
+async function toggleFav(el, pid){
+  const on = el.dataset.on === '1';
+  const newVal = !on;
+  try {
+    const r = await fetch('/api/annotate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({kind:'properties', key:pid, favorite:newVal})
+    });
+    if(!r.ok) throw new Error('save failed');
+    el.dataset.on = newVal ? '1' : '0';
+    el.classList.toggle('on', newVal);
+    el.closest('tr').dataset.fav = newVal ? 'yes' : 'no';
+    el.setAttribute('aria-pressed', newVal ? 'true' : 'false');
+    el.setAttribute('aria-label', newVal ? 'お気に入り解除' : 'お気に入りに追加');
+    showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
+  } catch(e){
+    showToast('保存失敗: ' + e.message);
+  }
+}
+</script>
+{% endblock %}

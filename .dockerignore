@@ -1,0 +1,37 @@
+# 秘密情報・認証情報
+.env
+.env.*
+anthropic_key.txt
+client_secret*.json
+credentials.json
+tokens/
+
+# 実データ（デモでは不使用）
+data/
+indexer.log
+*.log
+
+# デモデータ（コンテナ起動時に自動生成）
+demo_data/
+
+# Python 仮想環境
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+Dockerfile.*
+.dockerignore
+
+# IDE
+.vscode/
+.idea/

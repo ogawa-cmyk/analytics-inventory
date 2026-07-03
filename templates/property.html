@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}{{ d.summary.display_name }} - GA4プロパティ{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/properties">GA4プロパティ</a><span class="sep">/</span><span>{{ d.summary.display_name }}</span></nav>
+{% endblock %}
+
+{% block main_wrapper %}
+<main class="with-toc">
+  <aside class="toc-side">
+    <h3>このページの目次</h3>
+    <a href="#sec-overview">概要・アラート</a>
+    <a href="#sec-ai">🤖 AI分析</a>
+    <a href="#sec-diff">📈 前回比差分</a>
+    <a href="#sec-notes">🏷 タグ・メモ</a>
+    <a href="#sec-streams">データストリーム</a>
+    <a href="#sec-gtm">紐づくGTM</a>
+    <a href="#sec-ke">キーイベント</a>
+    <a href="#sec-cd">カスタムDim</a>
+    <a href="#sec-cm">カスタム指標</a>
+    <a href="#sec-events">イベント一覧</a>
+    <a href="#sec-roles">権限</a>
+  </aside>
+  <div class="main-col">
+{% block body %}
+<h1 id="sec-overview" style="margin:6px 0 14px">
+  <span class="fav-star {% if d.annotation.favorite %}on{% endif %}" data-on="{{ '1' if d.annotation.favorite else '0' }}" onclick="toggleFav(this)" style="font-size:22px;vertical-align:-2px">★</span>
+  {{ d.summary.display_name }}
+  <span class="grade-{{ d.summary.health_grade }}" style="font-size:13px">{{ d.summary.health_grade }}</span>
+  <span style="font-size:13px;color:#666">スコア {{ d.summary.health_score }}/100</span>
+  <span class="small" style="display:block;margin-top:4px;font-weight:normal">ID {{ d.summary.property_id }} ・ {{ d.summary.account_display_name }} ・ {{ d.summary.auth_email }}</span>
+</h1>
+
+{% if d.alerts %}
+<div class="card" style="margin-bottom:14px">
+  <h2>🚨 アラート ({{ d.alerts|length }})</h2>
+  <ul style="margin:0;padding-left:20px">
+  {% for a in d.alerts %}
+    <li class="alert-{{ a.level }}" style="font-size:13px;line-height:1.7">[{{ a.level }}] {{ a.message }}</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid #6c5ce7">
+  <h2 style="color:#6c5ce7;border-bottom-color:#e8e2ff">🤖 AIで分析・アクションプラン生成</h2>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <label class="small">モデル:</label>
+    <select id="ai-model" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
+      <option value="claude-sonnet-4-6">Sonnet 4.6（標準・速い）</option>
+      <option value="claude-opus-4-8">Opus 4.8（深い分析）</option>
+    </select>
+    <input id="ai-extra" type="text" placeholder="追加指示（任意）例: GTMタグ実装に重点" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px">
+    <button class="btn" id="ai-run-btn" onclick="runAnalysis()" style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">▶ 分析実行</button>
+    {% if d.ai_runs %}
+    <select id="ai-history" onchange="loadHistory(this.value)" style="padding:6px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:12px;margin-left:auto">
+      <option value="">過去の分析 ({{ d.ai_runs|length }}件)</option>
+      {% for r in d.ai_runs %}<option value="{{ r.stamp }}">{{ r.mtime[:16].replace('T',' ') }}</option>{% endfor %}
+    </select>
+    {% endif %}
+  </div>
+  <div id="ai-result" style="min-height:30px">
+    {% if d.latest_ai_run and d.latest_ai_run.parsed %}
+      <p class="small">前回分析: {{ d.latest_ai_run.parsed._meta.generated_at[:19].replace('T',' ') if d.latest_ai_run.parsed._meta else '' }} （{{ d.latest_ai_run.parsed._meta.model if d.latest_ai_run.parsed._meta else '' }}）— 下に表示中。最新化するには「▶ 分析実行」を押してください。</p>
+    {% else %}
+      <p class="small">「▶ 分析実行」を押すとClaude APIが現状を分析し、課題リスト＋優先度付きアクションプランを生成します。各アクションには外部AIに作業を任せるための完成済みプロンプトも付きます。</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+const PID_AI = '{{ pid }}';
+
+function renderResult(parsed){
+  const el = document.getElementById('ai-result');
+  if(parsed.error){
+    el.innerHTML = `<div class="err">${escapeHtml(parsed.error)}</div>` + (parsed.raw ? `<details><summary class="small">生レスポンス表示</summary><pre>${escapeHtml(parsed.raw)}</pre></details>` : '');
+    return;
+  }
+  const meta = parsed._meta || {};
+  let h = '';
+  if(parsed.summary){
+    h += `<div style="background:var(--g-ai-bg);padding:12px 14px;border-radius:6px;border-left:3px solid var(--g-ai);margin-bottom:14px">
+      <b style="color:var(--g-ai)">所見</b>
+      <p style="margin:6px 0 0;font-size:13px;line-height:1.7">${escapeHtml(parsed.summary)}</p>
+    </div>`;
+  }
+  if(parsed.issues && parsed.issues.length){
+    h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">🚨 課題 (${parsed.issues.length})</h3>
+      <button class="btn" onclick="toggleAll('issue', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
+    </div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for(const i of parsed.issues){
+      const sevColor = i.severity === 'high' ? 'var(--g-error)' : i.severity === 'medium' ? 'var(--g-warn)' : '#78909c';
+      const sevBg = i.severity === 'high' ? 'var(--g-error-bg)' : i.severity === 'medium' ? 'var(--g-warn-bg)' : 'var(--g-row-alt)';
+      h += `<details class="ai-acc issue-acc" style="background:${sevBg};border-left:3px solid ${sevColor};border-radius:5px">
+        <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center">
+          <span style="color:${sevColor};font-size:11px">▶</span>
+          <span class="badge" style="background:${sevColor};color:#fff">${escapeHtml(i.severity || '?')}</span>
+          <span class="small">${escapeHtml(i.category || '')}</span>
+          <b style="font-size:13px">${escapeHtml(i.title || '')}</b>
+        </summary>
+        <p style="margin:0;padding:0 12px 12px;font-size:12px;line-height:1.6;color:var(--g-text-muted)">${escapeHtml(i.description || '')}</p>
+      </details>`;
+    }
+    h += '</div>';
+  }
+  if(parsed.action_plan && parsed.action_plan.length){
+    h += `<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
+      <h3 style="font-size:14px;color:var(--g-text);margin:0">✅ アクションプラン (${parsed.action_plan.length})</h3>
+      <button class="btn" onclick="toggleAll('action', true)" style="font-size:11px;padding:3px 8px">全て展開</button>
+    </div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for(let idx=0; idx<parsed.action_plan.length; idx++){
+      const a = parsed.action_plan[idx];
+      h += `<details class="ai-acc action-acc" style="border:1px solid var(--g-border);border-radius:6px">
+        <summary style="padding:10px 12px;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="color:var(--g-primary);font-size:11px">▶</span>
+          <span class="badge" style="background:var(--g-primary);color:#fff">優先度 ${a.priority || idx+1}</span>
+          <span class="small">${escapeHtml(a.estimated_effort || '')}</span>
+          ${a.delegate_to_ai && a.delegate_prompt ? '<span class="small" style="color:var(--g-ai)">🤖 委任可</span>' : ''}
+          <b style="font-size:13px">${escapeHtml(a.title || '')}</b>
+        </summary>
+        <div style="padding:0 14px 12px">
+          <p style="margin:6px 0 8px;font-size:12px;line-height:1.7;color:var(--g-text-muted);white-space:pre-wrap">${escapeHtml(a.description || '')}</p>`;
+      if(a.delegate_to_ai && a.delegate_prompt){
+        h += `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--g-ai);font-size:12px;font-weight:500">🤖 ${escapeHtml(a.delegate_label || 'このアクションを外部AIに依頼')} — プロンプトを開く</summary>
+          <textarea readonly rows="8" style="font-family:monospace;font-size:11px;line-height:1.5;margin-top:8px;background:var(--g-row-alt)">${escapeHtml(a.delegate_prompt)}</textarea>
+          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+            ${[{label:'Claude', url:'https://claude.ai/new?q={q}'},{label:'ChatGPT', url:'https://chatgpt.com/?q={q}'},{label:'Perplexity', url:'https://www.perplexity.ai/search/new?q={q}'},{label:'Gemini', url:'https://gemini.google.com/app?q={q}'},{label:'Grok', url:'https://grok.com/?q={q}'}].map(s => `<button class="btn" onclick="openExt('${s.url}', this)" data-prompt="${escapeAttr(a.delegate_prompt)}">${s.label}</button>`).join('')}
+            <button class="btn" onclick="copyText(this)" data-prompt="${escapeAttr(a.delegate_prompt)}" style="margin-left:auto">📋 コピー</button>
+          </div>
+        </details>`;
+      }
+      h += '</div></details>';
+    }
+    h += '</div>';
+  }
+  if(meta.input_tokens || meta.output_tokens){
+    h += `<p class="small" style="margin-top:12px;text-align:right">model: ${escapeHtml(meta.model || '')} ・ tokens: in ${meta.input_tokens||'-'} / out ${meta.output_tokens||'-'}</p>`;
+  }
+  el.innerHTML = h;
+}
+
+function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+function toggleAll(kind, open){
+  const cls = kind === 'issue' ? 'issue-acc' : 'action-acc';
+  const items = document.querySelectorAll('.' + cls);
+  const anyClosed = [...items].some(el => !el.open);
+  const target = anyClosed;
+  for(const el of items){ el.open = target; }
+  const btn = event.target;
+  btn.textContent = target ? '全て折りたたむ' : '全て展開';
+}
+function escapeAttr(s){ return escapeHtml(s).replace(/\n/g, '&#10;'); }
+async function openExt(urlTpl, btn){
+  const text = btn.dataset.prompt;
+  const url = urlTpl.replace('{q}', encodeURIComponent(text));
+  if(url.length > 7500){
+    const ok = await confirmModal(`URL長 ${url.length} 文字。AI側で切り捨てられる可能性があります。続行しますか？（推奨: コピーして貼り付け）`);
+    if(!ok) return;
+  }
+  window.open(url, '_blank');
+}
+async function copyText(btn){
+  try {
+    await navigator.clipboard.writeText(btn.dataset.prompt);
+    showToast('📋 コピーしました');
+  } catch(e){ showToast('失敗'); }
+}
+
+async function runAnalysis(){
+  const btn = document.getElementById('ai-run-btn');
+  const model = document.getElementById('ai-model').value;
+  const extra = document.getElementById('ai-extra').value;
+  const el = document.getElementById('ai-result');
+  btn.disabled = true;
+  btn.innerText = '⟳ 分析中… 30〜90秒';
+  el.innerHTML = '<div class="status-msg spin" style="background:#f5f3ff;color:#6c5ce7;display:inline-block">Claudeが分析中…</div>';
+  try {
+    const r = await fetch(`/api/property/${PID_AI}/ai_analyze`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model, extra})
+    });
+    const data = await r.json();
+    renderResult(data);
+  } catch(e){
+    el.innerHTML = `<div class="err">通信エラー: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.innerText = '▶ 分析実行';
+  }
+}
+async function loadHistory(stamp){
+  if(!stamp) return;
+  const el = document.getElementById('ai-result');
+  el.innerHTML = '<div class="small">読み込み中…</div>';
+  try {
+    const r = await fetch(`/api/property/${PID_AI}/ai_run/${stamp}`);
+    const data = await r.json();
+    renderResult(data.parsed || {error: '解析データなし', raw: data.raw});
+  } catch(e){
+    el.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+{% if d.latest_ai_run and d.latest_ai_run.parsed %}
+renderResult({{ d.latest_ai_run.parsed | tojson }});
+{% endif %}
+</script>
+
+<div class="kpi-row">
+  <div class="kpi"><span>Sessions 7d</span><b>{{ '{:,}'.format(d.summary.sessions_7d) if d.summary.sessions_7d is not none else '—' }}</b></div>
+  <div class="kpi"><span>Events 7d</span><b>{{ '{:,}'.format(d.summary.events_7d) if d.summary.events_7d is not none else '—' }}</b></div>
+  <div class="kpi"><span>キーイベント</span><b>{{ d.summary.key_event_count }}</b></div>
+  <div class="kpi"><span>CustomDim</span><b>{{ d.summary.custom_dimension_count }}</b></div>
+  <div class="kpi"><span>CustomMetric</span><b>{{ d.summary.custom_metric_count }}</b></div>
+  <div class="kpi"><span>Streams</span><b>{{ d.summary.stream_count }}</b></div>
+</div>
+
+{% if d.diff and not d.diff.first_seen %}
+<div class="card card-section" id="sec-diff" style="margin-bottom:14px">
+  <h2>📈 前回スナップショットとの差分</h2>
+  <table>
+    <thead><tr><th>項目</th><th>前回</th><th>今回</th><th>変化</th></tr></thead>
+    <tbody>
+    {% for k, label in [('sessions_7d','Sessions(7d)'),('events_7d','Events(7d)'),('key_event_count','キーイベント数'),('custom_dimension_count','CD数'),('custom_metric_count','CM数')] %}
+      {% if d.diff[k] %}
+        {% set v = d.diff[k] %}
+        <tr>
+          <td>{{ label }}</td>
+          <td class="small">{{ '{:,}'.format(v.previous) }}</td>
+          <td class="small">{{ '{:,}'.format(v.current) }}</td>
+          <td><span class="{% if v.delta > 0 %}diff-up{% else %}diff-down{% endif %}">{{ '%+d' % v.delta }}{% if v.pct is not none %} ({{ '%+.1f' % v.pct }}%){% endif %}</span></td>
+        </tr>
+      {% endif %}
+    {% endfor %}
+    {% if d.diff.key_events_added %}
+      <tr><td>キーイベント追加</td><td colspan="3" class="diff-up">{{ d.diff.key_events_added|join(', ') }}</td></tr>
+    {% endif %}
+    {% if d.diff.key_events_removed %}
+      <tr><td>キーイベント削除</td><td colspan="3" class="diff-down">{{ d.diff.key_events_removed|join(', ') }}</td></tr>
+    {% endif %}
+    {% if d.diff.tracking_changed %}
+      <tr><td>計測状態</td><td colspan="3" class="diff-down">変化: {{ d.diff.tracking_changed.previous }} → {{ d.diff.tracking_changed.current }}</td></tr>
+    {% endif %}
+    {% if d.diff.ecommerce_changed %}
+      <tr><td>eコマース</td><td colspan="3">変化: {{ d.diff.ecommerce_changed.previous }} → {{ d.diff.ecommerce_changed.current }}</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card card-section" id="sec-notes" style="margin-bottom:14px">
+  <h2>🏷 タグ・メモ</h2>
+  <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:250px">
+      <label class="small">タグ（カンマ区切り）</label>
+      <input id="tags-input" type="text" value="{{ (d.annotation.tags or [])|join(', ') }}" placeholder="例: 契約中, EC, A社" style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:13px;margin-top:4px">
+    </div>
+    <div style="flex:2;min-width:300px">
+      <label class="small">メモ</label>
+      <textarea id="note-input" rows="2" placeholder="クライアント情報、担当者、特記事項など">{{ d.annotation.note or '' }}</textarea>
+    </div>
+    <button class="btn" onclick="saveAnnotation()" style="align-self:flex-end">💾 保存</button>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card card-section" id="sec-streams">
+    <h2>データストリーム</h2>
+    <table>
+      <thead><tr><th>名称</th><th>種別</th><th>Measurement ID</th><th>URI / Bundle</th></tr></thead>
+      <tbody>
+      {% for s in d.streams %}
+        <tr>
+          <td>{{ s.display_name }}</td>
+          <td class="small">{{ s.type }}</td>
+          <td class="small">{{ s.measurement_id or '—' }}</td>
+          <td class="small">{{ s.default_uri or s.package_name or s.bundle_id or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card card-section" id="sec-gtm">
+    <h2>🔗 紐づくGTMコンテナ ({{ d.linked_containers|length }})</h2>
+    {% if d.linked_containers %}
+    <table>
+      <thead><tr><th>アカウント / コンテナ</th><th>Public ID</th><th>タグ数</th></tr></thead>
+      <tbody>
+      {% for c in d.linked_containers %}
+        <tr>
+          <td><a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.account_name }} / {{ c.name }}</a></td>
+          <td class="small">{{ c.public_id }}</td>
+          <td>{{ c.tag_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="small">Measurement IDが一致するGTMコンテナはありません</p>{% endif %}
+  </div>
+
+  <div class="card card-section" id="sec-ke">
+    <h2>キーイベント</h2>
+    {% if d.key_events %}
+    <table>
+      <thead><tr><th>イベント名</th><th>カウント方式</th><th>作成日</th></tr></thead>
+      <tbody>
+      {% for k in d.key_events %}
+        <tr><td>{{ k.event_name }}</td><td class="small">{{ k.counting_method or '—' }}</td><td class="small">{{ (k.create_time or '')[:10] }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="small">設定なし</p>{% endif %}
+  </div>
+
+  <div class="card card-section" id="sec-cd">
+    <h2>カスタムディメンション ({{ d.custom_dimensions|length }})</h2>
+    {% if d.custom_dimensions %}
+    <table>
+      <thead><tr><th>表示名</th><th>パラメータ</th><th>スコープ</th><th>説明</th></tr></thead>
+      <tbody>
+      {% for c in d.custom_dimensions %}
+        <tr><td>{{ c.display_name }}</td><td class="small">{{ c.parameter_name }}</td><td class="small">{{ c.scope }}</td><td class="small">{{ c.description or '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="small">なし</p>{% endif %}
+  </div>
+
+  <div class="card card-section" id="sec-cm">
+    <h2>カスタム指標 ({{ d.custom_metrics|length }})</h2>
+    {% if d.custom_metrics %}
+    <table>
+      <thead><tr><th>表示名</th><th>パラメータ</th><th>単位</th><th>スコープ</th></tr></thead>
+      <tbody>
+      {% for c in d.custom_metrics %}
+        <tr><td>{{ c.display_name }}</td><td class="small">{{ c.parameter_name }}</td><td class="small">{{ c.measurement_unit }}</td><td class="small">{{ c.scope }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="small">なし</p>{% endif %}
+  </div>
+</div>
+
+<div class="card card-section" id="sec-events" style="margin-top:16px">
+  <h2>イベント一覧（直近30日）</h2>
+  {% if d.events and not (d.events|length == 1 and d.events[0].get('_error')) %}
+  <table>
+    <thead><tr><th>イベント名</th><th>回数</th><th>ユーザー数</th></tr></thead>
+    <tbody>
+    {% for e in d.events %}
+      <tr><td>{{ e.event_name }}</td><td>{{ '{:,}'.format(e.event_count) }}</td><td>{{ '{:,}'.format(e.total_users) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif d.events and d.events[0].get('_error') %}
+  <div class="err">取得失敗: {{ d.events[0]['_error'] }}</div>
+  {% else %}<p class="small">データなし</p>{% endif %}
+</div>
+
+<div class="card card-section" id="sec-roles" style="margin-top:16px">
+  <h2>権限（自分のロール）</h2>
+  {% if d.access_bindings %}
+    {% for b in d.access_bindings %}
+      <p class="small">{{ b.user }}:
+      {% for r in b.roles %}<span class="badge b-role">{{ r.split('/')[-1] }}</span>{% endfor %}</p>
+    {% endfor %}
+  {% else %}
+    <p class="small">accessBindings APIで取得できませんでした（プロパティのAdmin権限が必要）。</p>
+  {% endif %}
+</div>
+
+
+<script>
+const PID = '{{ pid }}';
+async function toggleFav(el){
+  const newVal = el.dataset.on !== '1';
+  try {
+    await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind:'properties', key:PID, favorite:newVal})});
+    el.dataset.on = newVal ? '1' : '0';
+    el.classList.toggle('on', newVal);
+    showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
+  } catch(e){ showToast('失敗'); }
+}
+async function saveAnnotation(){
+  const tags = document.getElementById('tags-input').value.split(',').map(t => t.trim()).filter(Boolean);
+  const note = document.getElementById('note-input').value;
+  try {
+    await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind:'properties', key:PID, tags, note})});
+    showToast('💾 保存しました');
+  } catch(e){ showToast('保存失敗'); }
+}
+</script>
+{% endblock %}
+  </div>
+</main>
+{% endblock %}

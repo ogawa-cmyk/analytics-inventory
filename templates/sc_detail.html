@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{{ summary.site_url }} - SC詳細{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/search-console">Search Console</a><span class="sep">/</span><span>{{ summary.domain }}</span></nav>
+{% endblock %}
+
+{% block main_wrapper %}
+<main class="with-toc">
+  <aside class="toc-side">
+    <h3>このページの目次</h3>
+    <a href="#sec-overview">概要・アラート</a>
+    <a href="#sec-perf">パフォーマンス</a>
+    <a href="#sec-tabs">タブ切替</a>
+  </aside>
+  <div class="main-col">
+{% block body %}
+<h1 id="sec-overview" style="margin:6px 0 4px">{{ summary.site_url }}
+  <span class="grade-{{ summary.health_grade }}" style="font-size:13px">{{ summary.health_grade }}</span>
+  <span style="font-size:13px;color:#666">スコア {{ summary.health_score }}/100</span>
+</h1>
+<p class="small" style="margin:0 0 14px">
+  {{ summary.auth_email }} ・ タイプ: {{ summary.site_type }} ・ 権限: {{ summary.permission_level }}
+  {% if linked_ga4 %}
+    ・🔗 紐づくGA4:
+    {% for p in linked_ga4 %}<a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+</p>
+
+{% if summary._alerts %}
+<div class="card" style="margin-bottom:14px">
+  <h2>🚨 アラート ({{ summary._alerts|length }})</h2>
+  <ul style="margin:0;padding-left:20px">
+    {% for a in summary._alerts %}
+    <li class="alert-{{ a.level }}" style="font-size:13px;line-height:1.7">[{{ a.level }}] {{ a.message }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="kpi-row" id="sec-perf">
+  <div class="kpi"><span>Click 28d</span><b>{{ '{:,}'.format(summary.clicks_28d) }}</b></div>
+  <div class="kpi"><span>Impression 28d</span><b>{{ '{:,}'.format(summary.impressions_28d) }}</b></div>
+  <div class="kpi"><span>CTR</span><b>{{ '%.2f' % (summary.ctr_28d * 100) }}%</b></div>
+  <div class="kpi"><span>平均掲載順位</span><b>{{ '%.1f' % summary.position_28d if summary.position_28d else '—' }}</b></div>
+  <div class="kpi"><span>クエリ</span><b>{{ summary.top_query_count }}</b></div>
+  <div class="kpi"><span>ページ</span><b>{{ summary.top_page_count }}</b></div>
+</div>
+
+<div id="sec-tabs" style="margin-bottom:14px">
+  <a class="btn" href="#queries" onclick="showTab('queries')" id="tab-queries">クエリ ({{ d.queries|length if d.queries else 0 }})</a>
+  <a class="btn" href="#pages" onclick="showTab('pages')" id="tab-pages">ページ ({{ d.pages|length if d.pages else 0 }})</a>
+  <a class="btn" href="#devices" onclick="showTab('devices')" id="tab-devices">デバイス・国</a>
+  <a class="btn" href="#sitemaps" onclick="showTab('sitemaps')" id="tab-sitemaps">Sitemap ({{ d.sitemaps|length if d.sitemaps else 0 }})</a>
+</div>
+
+<div class="card tab-section" id="sec-queries">
+  <h2>クエリ別パフォーマンス（直近28日）</h2>
+  <div class="filters"><input type="search" id="q-search" placeholder="クエリ名で絞り込み" style="flex:1;min-width:240px"></div>
+  {% if d.queries and not (d.queries|length == 1 and d.queries[0].get('_error')) %}
+  <table id="q-tbl">
+    <thead><tr>
+      <th data-type="str">クエリ</th>
+      <th data-type="num">Clicks</th>
+      <th data-type="num">Imps</th>
+      <th data-type="num">CTR</th>
+      <th data-type="num">位置</th>
+    </tr></thead>
+    <tbody>
+    {% for q in d.queries %}
+      <tr data-name="{{ q.query|lower }}">
+        <td>{{ q.query }}</td>
+        <td>{{ '{:,}'.format(q.clicks) }}</td>
+        <td>{{ '{:,}'.format(q.impressions) }}</td>
+        <td class="small">{{ '%.2f' % (q.ctr * 100) }}%</td>
+        <td class="small">{{ '%.1f' % q.position }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif d.queries and d.queries[0].get('_error') %}
+  <div class="err">{{ d.queries[0]['_error'] }}</div>
+  {% else %}<p class="small">データなし</p>{% endif %}
+</div>
+
+<div class="card tab-section" id="sec-pages" style="display:none">
+  <h2>ページ別パフォーマンス（直近28日）</h2>
+  <div class="filters"><input type="search" id="p-search" placeholder="URLで絞り込み" style="flex:1;min-width:240px"></div>
+  {% if d.pages and not (d.pages|length == 1 and d.pages[0].get('_error')) %}
+  <table id="p-tbl">
+    <thead><tr>
+      <th data-type="str">ページ</th>
+      <th data-type="num">Clicks</th>
+      <th data-type="num">Imps</th>
+      <th data-type="num">CTR</th>
+      <th data-type="num">位置</th>
+    </tr></thead>
+    <tbody>
+    {% for p in d.pages %}
+      <tr data-name="{{ p.page|lower }}">
+        <td class="small"><a class="prop" href="{{ p.page }}" target="_blank" rel="noopener">{{ p.page }}</a></td>
+        <td>{{ '{:,}'.format(p.clicks) }}</td>
+        <td>{{ '{:,}'.format(p.impressions) }}</td>
+        <td class="small">{{ '%.2f' % (p.ctr * 100) }}%</td>
+        <td class="small">{{ '%.1f' % p.position }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif d.pages and d.pages[0].get('_error') %}
+  <div class="err">{{ d.pages[0]['_error'] }}</div>
+  {% else %}<p class="small">データなし</p>{% endif %}
+</div>
+
+<div class="card tab-section" id="sec-devices" style="display:none">
+  <div class="grid-2">
+    <div>
+      <h2>デバイス別</h2>
+      {% if d.devices %}
+      <table>
+        <thead><tr><th>デバイス</th><th>Clicks</th><th>Imps</th><th>CTR</th><th>位置</th></tr></thead>
+        <tbody>
+        {% for x in d.devices %}
+        <tr>
+          <td>{{ x.device }}</td>
+          <td>{{ '{:,}'.format(x.clicks) }}</td>
+          <td>{{ '{:,}'.format(x.impressions) }}</td>
+          <td class="small">{{ '%.2f' % (x.ctr * 100) }}%</td>
+          <td class="small">{{ '%.1f' % x.position }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="small">データなし</p>{% endif %}
+    </div>
+    <div>
+      <h2>国別 (TOP15)</h2>
+      {% if d.countries %}
+      <table>
+        <thead><tr><th>国</th><th>Clicks</th><th>Imps</th><th>CTR</th></tr></thead>
+        <tbody>
+        {% for x in d.countries %}
+        <tr>
+          <td class="small">{{ x.country }}</td>
+          <td>{{ '{:,}'.format(x.clicks) }}</td>
+          <td>{{ '{:,}'.format(x.impressions) }}</td>
+          <td class="small">{{ '%.2f' % (x.ctr * 100) }}%</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="small">データなし</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card tab-section" id="sec-sitemaps" style="display:none">
+  <h2>Sitemap</h2>
+  {% if d.sitemaps %}
+  <table>
+    <thead><tr><th>パス</th><th>最終取得</th><th>最終送信</th><th>タイプ</th><th>状態</th><th>エラー</th><th>警告</th></tr></thead>
+    <tbody>
+    {% for sm in d.sitemaps %}
+    <tr>
+      <td class="small"><a class="prop" href="{{ sm.path }}" target="_blank" rel="noopener">{{ sm.path }}</a></td>
+      <td class="small">{{ (sm.last_downloaded or '')[:10] }}</td>
+      <td class="small">{{ (sm.last_submitted or '')[:10] }}</td>
+      <td class="small">{{ sm.type or '—' }}</td>
+      <td class="small">{% if sm.is_pending %}<span class="badge b-na">処理中</span>{% else %}<span class="badge b-ok">完了</span>{% endif %}</td>
+      <td>{% if sm.errors %}<span class="alert-error">{{ sm.errors }}</span>{% else %}0{% endif %}</td>
+      <td>{% if sm.warnings %}<span class="alert-warn">{{ sm.warnings }}</span>{% else %}0{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="small">登録sitemapなし。サイトの<code>sitemap.xml</code>をSearch Consoleから送信してください。</p>{% endif %}
+</div>
+
+<script>
+function showTab(name){
+  for(const sec of document.querySelectorAll('.tab-section')){ sec.style.display = 'none'; }
+  document.getElementById('sec-' + name).style.display = '';
+  for(const a of document.querySelectorAll('[id^=tab-]')){ a.style.background = ''; a.style.color = ''; }
+  const tab = document.getElementById('tab-' + name);
+  tab.style.background = 'var(--g-primary)'; tab.style.color = '#fff';
+  return false;
+}
+showTab('queries');
+
+function applySearch(inputId, tblId){
+  const inp = document.getElementById(inputId);
+  const tbl = document.getElementById(tblId);
+  if(!inp || !tbl) return;
+  inp.addEventListener('input', () => {
+    const s = inp.value.toLowerCase().trim();
+    for(const r of tbl.tBodies[0].rows){
+      r.style.display = (!s || r.dataset.name.includes(s)) ? '' : 'none';
+    }
+  });
+}
+applySearch('q-search', 'q-tbl');
+applySearch('p-search', 'p-tbl');
+
+// Sortable columns for query/page tables
+function makeSortable(tblId){
+  const tbl = document.getElementById(tblId);
+  if(!tbl) return;
+  const dir = {};
+  tbl.tHead.querySelectorAll('th').forEach((th, i) => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', () => {
+      const d = dir[i] = !dir[i];
+      const type = th.dataset.type || 'str';
+      const rows = [...tbl.tBodies[0].rows];
+      rows.sort((a,b)=>{
+        const av = a.cells[i].innerText.trim();
+        const bv = b.cells[i].innerText.trim();
+        if(type === 'num'){
+          const an = parseFloat(av.replace(/[,%]/g,'')) || 0;
+          const bn = parseFloat(bv.replace(/[,%]/g,'')) || 0;
+          return d ? an-bn : bn-an;
+        }
+        return d ? av.localeCompare(bv) : bv.localeCompare(av);
+      });
+      rows.forEach(r => tbl.tBodies[0].appendChild(r));
+    });
+  });
+}
+makeSortable('q-tbl'); makeSortable('p-tbl');
+</script>
+{% endblock %}
+  </div>
+</main>
+{% endblock %}

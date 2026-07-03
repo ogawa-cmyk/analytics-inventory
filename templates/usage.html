@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+{% block title %}使い方ガイド{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>使い方ガイド</span></nav>
+{% endblock %}
+{% block body %}
+<style>
+  .toc{background:var(--g-card);border:1px solid var(--g-border);border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:13px}
+  .toc ul{margin:0;padding-left:18px;line-height:1.9}
+  .toc a{color:var(--g-primary);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .help-section{scroll-margin-top:80px}
+  .help-section h2{color:var(--g-primary-dark);font-size:18px;border-bottom:2px solid var(--g-primary-light);padding-bottom:8px;margin-top:0}
+  .help-section h3{font-size:14px;color:var(--g-text);margin:18px 0 8px}
+  .step{display:flex;gap:14px;margin:14px 0;padding:14px;background:var(--g-primary-light);border-radius:6px;border-left:3px solid var(--g-primary)}
+  .step-num{flex:0 0 36px;height:36px;background:var(--g-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+  .step-body{flex:1}
+  .step-body h4{margin:0 0 6px;color:var(--g-primary-dark);font-size:14px}
+  .step-body p{margin:0 0 6px;font-size:13px;line-height:1.7}
+  .mock-screen{background:var(--g-card);border:1px solid var(--g-border);border-radius:6px;padding:12px 14px;margin:8px 0;font-size:12px;box-shadow:var(--shadow-sm);position:relative}
+  .mock-screen::before{content:"💻 イメージ";position:absolute;top:-8px;left:8px;background:var(--g-card);padding:0 6px;font-size:10px;color:var(--g-text-muted)}
+  .mock-row{display:flex;gap:12px;padding:6px 8px;border-bottom:1px solid var(--g-border);align-items:center;font-size:11px}
+  .mock-row:last-child{border-bottom:none}
+  .mock-row b{font-weight:600}
+  .mock-kpi{display:inline-flex;background:var(--g-card);border:1px solid var(--g-border);border-left:3px solid var(--g-primary);border-radius:6px;padding:8px 12px;margin:4px 4px 4px 0;flex-direction:column;font-size:11px;min-width:110px}
+  .mock-kpi.gtm{border-left-color:#6c5ce7}
+  .mock-kpi.sc{border-left-color:#0288d1}
+  .mock-kpi.ops{border-left-color:#ffa726}
+  .mock-kpi b{font-size:18px;color:var(--g-primary)}
+  .mock-kpi.gtm b{color:#6c5ce7}
+  .mock-kpi.sc b{color:#0288d1}
+  .mock-kpi.ops b{color:#bf6b00}
+  .mock-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;color:#fff;margin-right:4px}
+  .mock-tag.ga4{background:var(--g-primary)}
+  .mock-tag.gtm{background:#6c5ce7}
+  .mock-tag.sc{background:#0288d1}
+  .mock-button{display:inline-block;background:var(--g-card);color:var(--g-primary);border:1px solid var(--g-primary);padding:3px 10px;border-radius:4px;font-size:11px;margin:2px;font-weight:500}
+  .mock-button.primary{background:var(--g-ai);color:#fff;border-color:var(--g-ai)}
+  .mock-button.green{background:var(--g-primary);color:#fff}
+  .check-list{margin:0;padding-left:20px}
+  .check-list li{margin:8px 0;font-size:13px;line-height:1.7}
+  .check-list li::marker{color:var(--g-primary)}
+  .tip{background:var(--g-warn-bg);border-left:3px solid var(--g-warn);padding:10px 14px;border-radius:5px;font-size:13px;margin:10px 0}
+  .tip b{color:var(--g-warn)}
+  .scenario{background:var(--g-ai-bg);border-left:3px solid var(--g-ai);padding:12px 14px;border-radius:6px;margin:12px 0}
+  .scenario h4{margin:0 0 6px;color:var(--g-ai);font-size:14px}
+  .scenario p{margin:0;font-size:13px;line-height:1.7}
+  kbd{background:var(--g-card);border:1px solid var(--g-border);border-bottom-width:2px;padding:2px 6px;border-radius:3px;font-size:11px;font-family:monospace}
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 14px;flex-wrap:wrap">
+  <h1 style="font-size:20px;margin:0">使い方ガイド — GA4・GTM・Search Consoleの計測精度を上げる</h1>
+  <a href="/static/manual.pdf" download="GA4-Inventory-Manual.pdf"
+     style="display:inline-flex;align-items:center;gap:6px;background:var(--g-primary);color:#fff;padding:7px 16px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;white-space:nowrap;flex-shrink:0">
+    ⬇ PDF マニュアル
+  </a>
+</div>
+
+<div class="toc">
+  <b>目次</b>
+  <ul>
+    <li><a href="#what">このツールで何ができるか</a></li>
+    <li><a href="#flow-daily">毎日のチェック（5分）— ホームの読み方</a></li>
+    <li><a href="#flow-alert">要対応アラートの読み解きと対応フロー</a></li>
+    <li><a href="#flow-weekly">週次の改善フロー（30分）</a></li>
+    <li><a href="#watch">変化ログと週次メール通知（自動監視）</a></li>
+    <li><a href="#flow-ai">AI分析の活用パターン（個別・一括・自動）</a></li>
+    <li><a href="#client">クライアント別の管理</a></li>
+    <li><a href="#improve-ga4">GA4の計測精度を上げるチェックリスト</a></li>
+    <li><a href="#improve-gtm">GTMの計測精度を上げるチェックリスト</a></li>
+    <li><a href="#improve-sc">Search Consoleの状態を改善するチェックリスト</a></li>
+    <li><a href="#shortcuts">ショートカット・テーマ・ヒント</a></li>
+    <li><a href="#monthly">月次レポート用フロー</a></li>
+    <li><a href="#scenarios">よくあるシナリオ集</a></li>
+  </ul>
+</div>
+
+<div class="card help-section" id="what">
+  <h2>このツールで何ができるか</h2>
+  <p>複数クライアントの <b>GA4プロパティ・GTMコンテナ・Search Consoleサイト</b> を横断管理し、計測実装の問題を機械検出、AI分析で具体的な改善案を出すまでが目的です。</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+    <div style="padding:12px;background:var(--g-primary-light);border-radius:6px">
+      <b style="color:var(--g-primary-dark)">機械でできること</b>
+      <ul style="font-size:13px;line-height:1.8;margin:6px 0 0;padding-left:20px">
+        <li>計測停止・キーイベント未設定・CD過多・GA4↔GTM不整合の自動検出</li>
+        <li>UA系タグ残存・paused率過多・規模過大のGTM評価</li>
+        <li>SC流入0・sitemap未登録・低CTRの検出</li>
+        <li>過去スナップショットとの差分検出</li>
+        <li>ヘルススコアによる定量評価（GA4/GTM/SC共通の100点満点）</li>
+      </ul>
+    </div>
+    <div style="padding:12px;background:var(--g-ai-bg);border-radius:6px">
+      <b style="color:var(--g-ai)">AIに任せられること</b>
+      <ul style="font-size:13px;line-height:1.8;margin:6px 0 0;padding-left:20px">
+        <li>業種・URLから推奨キーイベント5件の提案</li>
+        <li>CD命名規約レビューと統合候補の特定</li>
+        <li>eコマース実装チェックリスト作成</li>
+        <li>UAタグ整理・GTMリファクタ計画書の生成</li>
+        <li>各アクションを外部AIで実行するためのプロンプト生成</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="card help-section" id="flow-daily">
+  <h2>毎日のチェック（5分）— ホームの読み方</h2>
+  <p>ホームを開いて上から目を通すだけで、その日に対応すべきことが分かる構成になっています。</p>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h4>ファーストビュー（常時表示）の3パートを確認</h4>
+      <p>4列ヘルスサマリ・要対応タイル・クイックアクションがスクロールせずに見えます。</p>
+      <div class="mock-screen">
+        <div class="mock-row" style="gap:6px;flex-wrap:wrap">
+          <div class="mock-kpi"><span>GA4 ヘルス</span><b>326</b><span>平均 65点</span></div>
+          <div class="mock-kpi gtm"><span>GTM ヘルス</span><b>113</b><span>平均 78点</span></div>
+          <div class="mock-kpi sc"><span>SC ヘルス</span><b>45</b><span>平均 60点</span></div>
+          <div class="mock-kpi ops"><span>運用状況</span><b>5</b><span>認証Gmail</span></div>
+        </div>
+      </div>
+      <p class="small" style="margin-top:6px">グレード分布バーは A〜F の実件数を比例幅で表示し、各セグメントに%表記。バーが極端に偏っている＝改善余地大。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h4>「今日の要対応」タイルで気になる項目をクリック</h4>
+      <p>各タイル左上に <b>📊 GA4 / 🏷 GTM / 🔍 SC</b> のツールタグ。重大度に応じて赤（error）またはオレンジ（warn）。</p>
+      <div class="mock-screen">
+        <div class="mock-row" style="background:var(--g-error-bg);border-left:3px solid var(--g-error);padding:10px 12px;border-radius:4px;padding-top:24px;position:relative">
+          <span class="mock-tag ga4" style="position:absolute;top:6px;left:8px">📊 GA4</span>
+          <b>11件</b>のプロパティで計測停止 <span style="margin-left:auto;color:var(--g-primary)">›</span>
+        </div>
+        <div class="mock-row" style="background:var(--g-warn-bg);border-left:3px solid var(--g-warn);padding:10px 12px;border-radius:4px;padding-top:24px;position:relative">
+          <span class="mock-tag gtm" style="position:absolute;top:6px;left:8px">🏷 GTM</span>
+          <b>2件</b>のGTMでUAタグ残存
+        </div>
+        <div class="mock-row" style="background:var(--g-warn-bg);border-left:3px solid var(--g-warn);padding:10px 12px;border-radius:4px;padding-top:24px;position:relative">
+          <span class="mock-tag sc" style="position:absolute;top:6px;left:8px">🔍 SC</span>
+          <b>5件</b>のSCでCTR極低
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h4>クリックするとモーダルが開き、対象一覧と対策方法をタブ切替で確認</h4>
+      <p>「対象 X件」タブで影響範囲の全件リスト、「📋 対策方法」タブで具体的な手順を見られます。リンクから個別の詳細ページへも飛べます。</p>
+      <div class="mock-screen">
+        <div class="mock-row" style="background:var(--g-card);font-weight:600">プロパティで計測停止 (11件)</div>
+        <div class="mock-row" style="gap:0">
+          <span style="border-bottom:2px solid var(--g-primary);padding:6px 12px;color:var(--g-primary)">対象 11件</span>
+          <span style="padding:6px 12px;color:var(--g-text-muted)">📋 対策方法</span>
+        </div>
+        <div class="mock-row" style="font-size:11px;color:var(--g-text-muted)">対象 / グレード / 補足</div>
+        <div class="mock-row" style="font-size:11px">プロパティ名 / D / sessions7d=0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h4>必要ならクイックアクションで一括対応</h4>
+      <p>各ボタンに <b>マウスオーバーで詳細ツールチップ</b> が表示。コストや所要時間が事前に分かります。</p>
+      <div class="mock-screen">
+        <span class="mock-button green">▶ データ更新</span>
+        <span class="mock-button">🤖 自動診断</span>
+        <span class="mock-button primary">⚡ アラート一括AI分析</span>
+        <span class="mock-button">⬇ GA4 CSV</span>
+        <span class="mock-button">⬇ GTM CSV</span>
+      </div>
+      <p class="small" style="margin-top:6px">「▶ データ更新」実行中は <b>ヘッダ右に進捗パネル</b> が表示され、件数・経過時間・残り時間（ETA）・処理速度・現在処理中の対象が見えます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h4>必要に応じて折りたたみセクションを開く</h4>
+      <p>下記4セクションはデフォルト閉。クリックで展開:</p>
+      <ul style="font-size:13px;line-height:1.8;padding-left:20px">
+        <li><b>📈 最近の変化</b> — 前回スナップショット比のTOP5</li>
+        <li><b>🚨 要対応 TOP10</b> — GA4 / GTM / SC を内部タブ切替で表示</li>
+        <li><b>🤖 AI分析の活用状況</b> — 自動診断・カバレッジ・最頻出課題TOP5・直近ジョブ</li>
+        <li><b>⭐ お気に入り・タグ・MID重複</b> — 3カード横並び</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tip"><b>Tip:</b> ホームは3日に1回のデータ更新の翌日に開くと最も価値があります。スナップショット差分と自動診断の両方が揃った状態を確認できます。</div>
+</div>
+
+<div class="card help-section" id="flow-alert">
+  <h2>要対応アラートの読み解きと対応フロー</h2>
+  <p>各アラートタイルをクリックすると <b>「対象」「対策方法」</b> の2タブモーダルが開きます。</p>
+
+  <h3>対象タブで見られる情報</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li><b>対象名（クリックで詳細へ）</b> ・ <b>グレード</b> ・ <b>補足情報</b>（sessions7d、UA件数、CTRなど）</li>
+    <li>SCのMID重複・GA4↔GTM不整合は特殊レイアウト（重複コンテナ・未受信MIDを直接表示）</li>
+  </ul>
+
+  <h3>対策方法タブで見られる情報</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li><b>この問題について</b>（緑のサマリーボックス）</li>
+    <li><b>📝 対策手順</b>（5〜7ステップの番号付きリスト）</li>
+    <li><b>🤖 AI委任ヒント</b>（該当する場合、AI分析実行を促す）</li>
+  </ul>
+
+  <h3>対策ガイドが用意されているアラート（13種類）</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-top:6px">
+    <div><b style="color:var(--g-primary-dark)">GA4 (5種)</b><br>untracked / no_streams / api_err / no_ke / cd_overflow</div>
+    <div><b style="color:#6c5ce7">GTM (3種)</b><br>no_tags / ua_left / no_ga4</div>
+    <div><b style="color:#0288d1">SC (3種)</b><br>sc_no_clicks / sc_no_sitemap / sc_low_ctr</div>
+    <div><b>クロス (2種)</b><br>duplicate_mids / mismatch</div>
+  </div>
+  <p class="small" style="margin-top:10px">それぞれに「GA4管理画面の操作手順」「GTM編集手順」「サイト側の調査ステップ」など具体的な行動が記載されているので、見ながら対処できます。</p>
+</div>
+
+<div class="card help-section" id="flow-weekly">
+  <h2>週次の改善フロー（30分）</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h4>プロパティ詳細ページを開く</h4>
+      <p>GA4プロパティ一覧から対象プロパティの名前をクリック。<b>右サイドにスティッキー目次</b>が表示され、長いページでも目的のセクションへ即移動可。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h4>「🤖 AIで分析・アクションプラン生成」を実行</h4>
+      <p>モデル（Sonnet 4.6 / Opus 4.8）を選んで「▶ 分析実行」。30〜90秒で <b>所見・課題リスト・優先度付きアクションプラン</b> が返ってきます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h4>アクションごとの「🤖 委任可」を選んで外部AIに依頼</h4>
+      <p>各アクションを展開すると、<b>1,000〜2,000字の自立型プロンプト</b>が用意されています。「Claude」「ChatGPT」ボタンで新タブを開き、すぐ作業着手。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h4>結果をクライアントに報告／実装に反映</h4>
+      <p>AIが生成した設計書・実装手順を確認後、クライアント担当に共有。プロパティ詳細の「<b>🏷 タグ・メモ</b>」欄に対応状況を記録しておくと履歴管理に便利。</p>
+    </div>
+  </div>
+</div>
+
+<div class="card help-section" id="watch">
+  <h2>変化ログと週次メール通知（自動監視）</h2>
+  <p style="font-size:13px">「見に行かなくても異常に気づける」ための2つの自動監視機能です。データ収集（⟳ 更新）のたびに前回スナップショットと比較し、変化を自動記録します。</p>
+
+  <h3>🔔 変化ログ（ナビの「変化ログ」）</h3>
+  <ul class="check-list">
+    <li><b>重大（赤）</b> — 計測停止、キーイベント削除、データストリーム減少、GTMタグ全消失、GA4 Measurement IDの取り外し。<b>すぐに対応が必要な変化</b>です。</li>
+    <li><b>注意（橙）</b> — セッション・検索クリックの急減（前回比-50%超）、タグ数減少、カスタムディメンション減少、sitemapエラー増加。</li>
+    <li><b>情報（灰）</b> — プロパティ/コンテナの追加、キーイベント追加、新バージョン公開など、把握しておきたい変化。</li>
+  </ul>
+  <div class="tip"><b>💡 活用のコツ:</b> クライアントから「数値がおかしい」と連絡が来たら、まず変化ログを確認。「いつ・何が変わったか」が記録されているため、GTMの公開やキーイベント変更が原因かを数秒で切り分けられます。</div>
+
+  <h3>✉ 週次メール通知（分析メニュー →「週次メール通知設定」）</h3>
+  <p style="font-size:13px">毎週決まった曜日・時刻に、<b>KPIサマリー ＋ 直近7日間の変化 ＋ 要対応の一覧（グレードD/F・エラー）</b>をメールで受け取れます。</p>
+  <ul class="check-list">
+    <li>送信先（複数可）・曜日・時刻を設定し、SMTPサーバー情報（Gmailならアプリパスワード）を入力して保存。</li>
+    <li>「👁 メールをプレビュー」で内容を事前確認、「📨 テスト送信」で疎通チェックができます。</li>
+    <li>SMTPパスワードはローカルの data/ 配下（Git管理外）に保存。環境変数 <code>SMTP_PASSWORD</code> での指定も可能です。</li>
+    <li><b>サーバーを常時起動しない場合（Windows）:</b> <code>register_weekly_task.bat</code> を一度実行すると、タスクスケジューラ経由で毎日 <code>run_weekly_mail.bat</code> が起動し、送信曜日に一致した日だけメールが送られます（結果は <code>weekly_mail.log</code> に記録）。</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="flow-ai">
+  <h2>AI分析の活用パターン</h2>
+
+  <h3>① 個別分析（プロパティ/コンテナ詳細から）</h3>
+  <p style="font-size:13px">1件をじっくり見たい時。所見→課題→アクション→委任プロンプトの流れ。GA4プロパティ・GTMコンテナの両方で対応。</p>
+
+  <h3>② 一括AI分析（プロパティ一覧から）</h3>
+  <p style="font-size:13px">10〜20件をまとめて分析したい時。一覧の各行のチェックボックスで選択 → 「🤖 一括AI分析」→ モーダルでモデル選択 → 概算確認 → ジョブ起動。</p>
+  <div class="mock-screen">
+    <div class="mock-row">☑ ☑ ☑ ☑ ☑ &nbsp; <span class="mock-button">⚠ アラート分を選択</span> <span class="mock-button primary">🤖 一括AI分析 (5)</span> <span class="mock-button">⬇ CSV</span></div>
+    <div class="mock-row" style="font-size:11px;color:var(--g-text-muted);background:var(--g-warn-bg)">推定コスト: $0.46 (約71円) ・ 所要時間: 約5分</div>
+  </div>
+
+  <h3>③ 自動診断（3日ごとに自動実行）</h3>
+  <p style="font-size:13px">3日ごとのデータ更新後に自動で動き、新規アラート発生プロパティを最大15件分析。結果はホームに通知。ヘッダの「分析▾」ドロップダウン →「自動診断を実行」で手動起動も可。</p>
+
+  <h3>④ AI分析カテゴリ集計（ホーム層3）</h3>
+  <p style="font-size:13px">複数プロパティのAI結果を集計し、最頻出の課題カテゴリTOP5が見えます。「キーイベント未設定が25件」のような全体傾向把握＝社内レポートやセミナー素材に。</p>
+
+  <div class="tip"><b>コスト感:</b> Sonnet 4.6で1分析あたり約12円、Opus 4.8で約65円。10件の一括で約120円。自動診断1ヶ月分（3日×10回×平均10件）で約1,200円。</div>
+</div>
+
+<div class="card help-section" id="client">
+  <h2>クライアント別の管理（タグ・お気に入り・メモ）</h2>
+
+  <h3>お気に入り（★）</h3>
+  <p style="font-size:13px">プロパティ一覧・GTM一覧・各詳細ページで★クリックで登録。ホームの折りたたみ「⭐ お気に入り」セクションに固定表示。<b>頻繁にチェックする5〜10件</b>を登録すると朝チェックが効率化。</p>
+
+  <h3>タグ付け</h3>
+  <p style="font-size:13px">プロパティ詳細・GTM詳細・SC詳細の「🏷 タグ・メモ」セクションで、カンマ区切りで複数タグを設定。例:</p>
+  <div class="mock-screen">
+    <div class="mock-row">
+      <span class="tag-chip">契約中</span>
+      <span class="tag-chip">EC</span>
+      <span class="tag-chip">A社</span>
+      <span class="tag-chip">月次レポート対象</span>
+    </div>
+  </div>
+  <p style="font-size:13px">一覧画面の「タグ」フィルタで絞り込み可能。たとえば「契約中」だけ表示して一括AI分析をかけることもできます。</p>
+
+  <h3>メモ</h3>
+  <p style="font-size:13px">クライアント担当者・連絡履歴・特記事項などを記録。詳細ページから保存可。ホームの「⭐ ユーザータグ別件数」で集計確認。</p>
+
+  <div class="tip"><b>運用例:</b> 「契約中」「トライアル」「休眠」「セミナー素材」「業界:EC」「業界:メディア」のように2軸で運用すると、後で集計・抽出しやすくなります。</div>
+</div>
+
+<div class="card help-section" id="improve-ga4">
+  <h2>GA4の計測精度を上げるチェックリスト</h2>
+  <p>ヘルススコアを上げる＝計測精度を上げる、です。スコア要素を1つずつ確認してください。</p>
+
+  <h3>1. 計測の基礎確認（スコア30点分）</h3>
+  <ul class="check-list">
+    <li>直近7日でSessions/Events/Usersが1以上か？ ← 0なら計測停止</li>
+    <li>データストリームが1件以上あるか？</li>
+    <li>Webストリームの場合、Measurement IDが正しいか？</li>
+    <li>サイトに gtag.js または GTM の GA4 Config タグが入っているか？</li>
+  </ul>
+
+  <h3>2. キーイベント設定（スコア20点分）</h3>
+  <ul class="check-list">
+    <li>主要CV（フォーム完了、購入、資料DL、SNS共有等）がキーイベントに昇格されているか？</li>
+    <li>3件以上のキーイベントが設定されているか？</li>
+    <li>キーイベント名が <code>snake_case</code> で統一されているか？</li>
+    <li>GA4予約イベント（<code>purchase</code>等）と独自イベント名が衝突していないか？</li>
+  </ul>
+  <p style="font-size:13px">→ 「AIで分析」で業種・URL・top eventsから推奨キーイベント5件を提案させると効率的。</p>
+
+  <h3>3. カスタムディメンション設計（スコア15点分）</h3>
+  <ul class="check-list">
+    <li>CDが1〜30件の範囲か？（50件上限、過多は管理コスト増）</li>
+    <li>命名規約（プレフィックス・スネークケース・スコープ表記）が一貫しているか？</li>
+    <li>使われていないCD・テスト残骸のCDがないか？</li>
+    <li>スコープ（Event/User/Item/Session）が用途に合っているか？</li>
+  </ul>
+
+  <h3>4. eコマース計測（スコア10点分）</h3>
+  <ul class="check-list">
+    <li>ECサイトなら <code>purchase</code> が直近30日で発生しているか？</li>
+    <li><code>view_item</code> / <code>add_to_cart</code> / <code>begin_checkout</code> / <code>purchase</code> のファネルが揃っているか？</li>
+    <li><code>items</code>配列・<code>value</code>・<code>currency</code>が正しく送信されているか？</li>
+  </ul>
+
+  <h3>5. 権限と運用</h3>
+  <ul class="check-list">
+    <li>自分（または代理人）がAdministrator権限を持っているか？</li>
+    <li>除外フィルタ（内部IP・ボット・特定UA）が設定されているか？</li>
+    <li>クロスドメイン計測が必要なサイトで設定されているか？</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="improve-gtm">
+  <h2>GTMの計測精度を上げるチェックリスト</h2>
+
+  <h3>1. 基本構成（スコア30点分）</h3>
+  <ul class="check-list">
+    <li>コンテナが公開されているか？（バージョンIDあり）</li>
+    <li>少なくとも1つ以上のタグが入っているか？</li>
+    <li>GA4 Measurement IDが設定されたコンテナか？</li>
+  </ul>
+
+  <h3>2. GA4設定の整合性（スコア10点分）</h3>
+  <ul class="check-list">
+    <li><code>gaawc</code>（GA4 Configurationタグ）が1つ存在するか？</li>
+    <li>Measurement IDが本番用と一致しているか？（テスト用が紛れていないか）</li>
+    <li>Enhanced Measurementが有効化されているか？</li>
+  </ul>
+
+  <h3>3. レガシータグ整理（スコア15点分）</h3>
+  <ul class="check-list">
+    <li><b>UA系タグ</b>（タグタイプ <code>ua</code>）が残っていないか？ ← 即削除推奨</li>
+    <li>古いYahoo!タグマネージャ・Floodlightの旧仕様タグが残っていないか？</li>
+    <li>「2023年7月以前に作成されて触られていないタグ」がないか？</li>
+  </ul>
+  <p style="font-size:13px">→ GTMコンテナ詳細でAI分析を実行すると、UA系タグ・廃止対象タグを自動検出。</p>
+
+  <h3>4. 整理度（スコア10点分）</h3>
+  <ul class="check-list">
+    <li>paused状態のタグが10%以下に抑えられているか？</li>
+    <li>命名規約（接頭辞 GA4/Meta/Yahoo/... + 動詞）が一貫しているか？</li>
+    <li>同じ目的のタグが複数あって統合候補になっていないか？</li>
+    <li>使われていないトリガー・変数が残っていないか？</li>
+  </ul>
+
+  <h3>5. パフォーマンス・セキュリティ</h3>
+  <ul class="check-list">
+    <li>カスタムHTMLタグで <code>document.write</code> や <code>innerHTML</code> への直接挿入を使っていないか？</li>
+    <li>個人情報・APIキーがタグやコード内に直書きされていないか？</li>
+  </ul>
+
+  <div class="tip"><b>大規模コンテナの整理術:</b> 400件超のコンテナはAIに「タグ命名規約と整理案」を依頼すると、削除候補リスト＋統合案を1,000字程度のドキュメントで返してくれます。</div>
+</div>
+
+<div class="card help-section" id="improve-sc">
+  <h2>Search Consoleの状態を改善するチェックリスト</h2>
+
+  <h3>1. 基本設定（スコア15点分）</h3>
+  <ul class="check-list">
+    <li>サイトマップが登録されているか？（<code>/sitemap.xml</code> をSearch Consoleから送信）</li>
+    <li>sitemap内のURLにエラーがないか？（404・noindex等）</li>
+    <li>所有者または FullUser 権限を持っているか？</li>
+  </ul>
+
+  <h3>2. 流入規模（スコア30点分）</h3>
+  <ul class="check-list">
+    <li>直近28日でClick・Impressionが発生しているか？</li>
+    <li>Impression>0でClick=0の場合、タイトル・メタが検索意図とミスマッチの可能性</li>
+    <li>Impression=0なら、インデックス未登録または検索クエリと完全に外れている</li>
+  </ul>
+
+  <h3>3. CTR・順位の妥当性（スコア20点分）</h3>
+  <ul class="check-list">
+    <li>全体CTRが1%以上か？（理想は3%以上）</li>
+    <li>平均掲載順位が30位以内か？</li>
+    <li>Impression高×CTR低のクエリ＝改善余地大（タイトル・メタ最適化のチャンス）</li>
+  </ul>
+
+  <h3>4. クエリ・ページの多様性（スコア20点分）</h3>
+  <ul class="check-list">
+    <li>Clickが発生しているクエリが20件以上あるか？</li>
+    <li>Clickが発生しているページが20件以上あるか？</li>
+    <li>1〜2ページに依存していないか（リスク分散）</li>
+  </ul>
+
+  <h3>5. GA4連携（スコア10点分）</h3>
+  <ul class="check-list">
+    <li>同じドメインのGA4プロパティが存在するか？</li>
+    <li>SC側でGA4プロパティのリンクを設定しているか？（管理画面 → 設定 → 関連付け）</li>
+  </ul>
+</div>
+
+<div class="card help-section" id="shortcuts">
+  <h2>ショートカット・テーマ・ヒント</h2>
+
+  <h3>キーボードショートカット</h3>
+  <table>
+    <thead><tr><th>キー</th><th>動作</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>g</kbd> <kbd>h</kbd></td><td>ホーム</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>p</kbd></td><td>GA4プロパティ一覧</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>g</kbd></td><td>GTMコンテナ一覧</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>s</kbd></td><td>Search Console</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>a</kbd></td><td>一括AI分析</td></tr>
+      <tr><td><kbd>g</kbd> <kbd>u</kbd></td><td>使い方</td></tr>
+      <tr><td><kbd>?</kbd></td><td>ヘルプ</td></tr>
+      <tr><td><kbd>/</kbd></td><td>検索ボックスフォーカス</td></tr>
+    </tbody>
+  </table>
+
+  <h3>テーマ切替</h3>
+  <p style="font-size:13px">ヘッダ右上の <b>🌓</b> ボタンでライト⇔ダーク切替。設定はCookieに保存され次回も維持。</p>
+
+  <h3>進捗パネル</h3>
+  <p style="font-size:13px">データ更新中はヘッダのステータスをクリック、または自動表示される右上パネルで詳細進捗を確認できます。<b>残り時間（ETA）</b>と<b>処理速度</b>がリアルタイム計算されるので、長時間更新の予測が立ちます。</p>
+
+  <h3>クイック検索</h3>
+  <p style="font-size:13px"><kbd>/</kbd> キーを押すと検索ボックスにフォーカス。URL末尾に <code>/search?q=キーワード</code> でも横串検索可能（メニュー非表示中）。</p>
+</div>
+
+<div class="card help-section" id="monthly">
+  <h2>月次レポート用フロー</h2>
+  <p>クライアント向け月次レポートやセミナー素材を作る時の流れ。</p>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h4>プロパティ一覧をCSVエクスポート</h4>
+      <p>右上の「⬇ CSV」ボタン。全件 or フィルタ結果のヘルススコア・アラート・タグ・メモ込みでExcelで読める形式。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h4>クライアントタグでフィルタ → 一括AI分析</h4>
+      <p>例: タグ「契約中」「業界:EC」で絞って10件を一括AI分析。1〜2分で全件のサマリー＋課題＋アクションが揃う。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h4>「TOP20課題」を活用</h4>
+      <p>一括ジョブ詳細ページ上部の「重要度の高い課題TOP20」を確認。クライアント横断の傾向（CD命名揺れが多い／UA残存が多い等）が見えます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h4>各クライアントごとのアクションプランをコピー</h4>
+      <p>個別プロパティ詳細から「📋 コピー」でAI生成のアクションプランをMarkdownにペースト。月次レポートのドラフトに使う。</p>
+    </div>
+  </div>
+</div>
+
+<div class="card help-section" id="scenarios">
+  <h2>よくあるシナリオ集</h2>
+
+  <div class="scenario">
+    <h4>📞 クライアントから「コンバージョン数が急に減った」と問い合わせ</h4>
+    <p>① 対象プロパティを開く<br>
+    ② 「📈 前回スナップショットとの差分」セクションでSessions/キーイベントの変化を確認<br>
+    ③ 「🤖 AIで分析」→ 計測停止診断テンプレートをAIが自動選択<br>
+    ④ AI生成の「考えられる原因リスト」を元にクライアントへ初期回答</p>
+  </div>
+
+  <div class="scenario">
+    <h4>📝 新規クライアントが契約 → 計測実装の現状把握</h4>
+    <p>① そのクライアントのGmailで <code>python auth.py add</code><br>
+    ② データ更新 → 新プロパティが自動でリストに登場<br>
+    ③ タグ「新規」「契約中」「クライアント名」を付ける<br>
+    ④ お気に入り★登録<br>
+    ⑤ AI分析実行で「最初の改善提案」を即時生成</p>
+  </div>
+
+  <div class="scenario">
+    <h4>🧹 大規模コンテナのGTM整理（タグ300件超）</h4>
+    <p>① GTM一覧でグレードフィルタ「C/D」を選択 → 整理が必要なコンテナを抽出<br>
+    ② コンテナ詳細で「🤖 AIで分析」<br>
+    ③ AIが「UA残存」「重複候補」「未使用変数」を特定<br>
+    ④ 「🤖 GTMインポートJSON生成」プロンプトを Claude.ai に投げてバルク変更ファイルを作成<br>
+    ⑤ GTMで「インポート」 → プレビュー → 公開</p>
+  </div>
+
+  <div class="scenario">
+    <h4>🔍 SCのCTRが極端に低いサイトを発見</h4>
+    <p>① ホームの要対応タイル「SCでCTR極低」をクリック<br>
+    ② モーダルで対象サイト一覧確認<br>
+    ③ 「📋 対策方法」タブで具体的な手順確認<br>
+    ④ サイト詳細ページでクエリ別にImp/CTR低を特定<br>
+    ⑤ 該当ページのtitle・metaを改善 → 数週間後に再確認</p>
+  </div>
+
+  <div class="scenario">
+    <h4>📊 セミナー素材を作りたい</h4>
+    <p>① ホーム折りたたみ「🤖 AI分析の活用状況」→ 「AIが指摘した課題カテゴリTOP5」を確認<br>
+    ② 全プロパティを横断した「実際にあった改善事例」を整理<br>
+    ③ AI分析結果を匿名化してスライドに転載<br>
+    ④ ホームのスクリーンショットをセミナー資料の「ツール紹介」として使う</p>
+  </div>
+
+  <div class="scenario">
+    <h4>🤔 「このプロパティ、何が問題かよく分からない」とき</h4>
+    <p>① プロパティ詳細を開く（右サイド目次でセクション間移動）<br>
+    ② 「🤖 AIで分析」→ Opus 4.8 を選択（深い分析）<br>
+    ③ 30〜90秒で所見＋課題＋アクションが揃う<br>
+    ④ 課題のアコーディオンを展開して、severity high のものから検討</p>
+  </div>
+
+  <div class="scenario">
+    <h4>⚡ 朝、出社して「今日の対応すべき項目」を即把握</h4>
+    <p>① ブラウザでホームを開く（<kbd>g</kbd> <kbd>h</kbd>でも可）<br>
+    ② 4列ヘルスサマリで全体状況を3秒で把握<br>
+    ③ 「今日の要対応」タイルに目を通す（赤=即対応、オレンジ=要注意）<br>
+    ④ 気になるタイルをクリック → 対象と対策方法を確認<br>
+    ⑤ 必要に応じてクライアントに連絡 or 自分で修正</p>
+  </div>
+</div>
+
+
+<p class="small" style="margin-top:12px;text-align:center;color:var(--g-text-muted)">用語の詳細は <a href="/help" class="prop">ヘルプ・用語集</a> へ。</p>
+
+{% endblock %}

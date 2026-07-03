@@ -1,0 +1,39 @@
+# --- Secrets / Credentials (CRITICAL: never commit) ---
+.env
+.env.*
+anthropic_key.txt
+client_secret*.json
+credentials.json
+tokens/
+
+# --- User data (client-specific, do not share) ---
+data/
+indexer.log
+*.log
+
+# --- Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# --- Local dev artifacts ---
+*.local
+*.bak
+
+# --- Demo data (generated at runtime by demo_server.py) ---
+demo_data/

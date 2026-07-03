@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}収集エラー詳細{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>収集エラー</span></nav>
+{% endblock %}
+{% block body %}
+<h1 style="font-size:18px;margin:6px 0 14px">収集エラー詳細 ({{ errors|length }}件)</h1>
+
+{% if errors %}
+<div class="grid-2" style="margin-bottom:14px">
+  <div class="card">
+    <h2>ステージ別</h2>
+    <table>
+      <thead><tr><th>ステージ</th><th>件数</th></tr></thead>
+      <tbody>
+      {% for stage, n in by_stage.most_common() %}
+        <tr><td class="small">{{ stage }}</td><td>{{ n }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>認証Gmail別</h2>
+    <table>
+      <thead><tr><th>Gmail</th><th>件数</th></tr></thead>
+      <tbody>
+      {% for email, n in by_email.most_common() %}
+        <tr><td class="small">{{ email or '(不明)' }}</td><td>{{ n }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>エラー一覧</h2>
+  <div class="filters">
+    <input type="search" id="err-q" placeholder="検索（メッセージ・対象ID）">
+    <select id="err-stage-filter">
+      <option value="">ステージ: すべて</option>
+      {% for stage, n in by_stage.most_common() %}<option value="{{ stage }}">{{ stage }} ({{ n }})</option>{% endfor %}
+    </select>
+    <select id="err-email-filter">
+      <option value="">Gmail: すべて</option>
+      {% for email, n in by_email.most_common() %}<option value="{{ email }}">{{ email }}</option>{% endfor %}
+    </select>
+    <span class="small" id="err-cnt"></span>
+  </div>
+
+  <div class="table-wrap">
+  <table id="err-tbl">
+    <thead><tr>
+      <th>Gmail</th>
+      <th>ステージ</th>
+      <th>対象</th>
+      <th>エラー内容</th>
+      <th>リトライ結果</th>
+    </tr></thead>
+    <tbody>
+    {% for e in errors %}
+      <tr data-stage="{{ e.stage }}" data-email="{{ e.email }}" data-search="{{ ((e.error or '') ~ ' ' ~ (e.property_id or '') ~ ' ' ~ (e.account or '') ~ ' ' ~ (e.container or '') ~ ' ' ~ (e.site_url or ''))|lower }}">
+        <td class="small">{{ e.email }}</td>
+        <td class="small"><span class="badge b-na">{{ e.stage }}</span></td>
+        <td class="small">
+          {% if e.property_id %}<a class="prop" href="/property/{{ e.property_id }}">prop {{ e.property_id }}</a>
+          {% elif e.account %}GTM acct {{ e.account }}
+          {% elif e.container %}container {{ e.container }}
+          {% elif e.account_id %}GA4 acct {{ e.account_id }}
+          {% elif e.site_url %}{{ e.site_url }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="small" style="max-width:600px;word-break:break-all">{{ (e.error or '')[:500] }}</td>
+        <td class="small">{% if e.retry_error %}<span class="alert-error">{{ e.retry_error[:200] }}</span>{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small" style="margin-top:12px">
+    💡 リトライ可能なエラーは <code>python retry_errors.py</code> で個別に再収集できます。<br>
+    💡 認証/権限エラーは Gmail を <code>python auth.py add</code> で再認証してください。
+  </p>
+</div>
+
+<script>
+const eq = document.getElementById('err-q');
+const esf = document.getElementById('err-stage-filter');
+const eef = document.getElementById('err-email-filter');
+const etb = document.getElementById('err-tbl');
+const ecnt = document.getElementById('err-cnt');
+function applyErr(){
+  const s = eq.value.toLowerCase().trim();
+  let shown = 0;
+  for(const r of etb.tBodies[0].rows){
+    const okS = !s || r.dataset.search.includes(s);
+    const okStg = !esf.value || r.dataset.stage === esf.value;
+    const okE = !eef.value || r.dataset.email === eef.value;
+    const ok = okS && okStg && okE;
+    r.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  }
+  ecnt.textContent = (s||esf.value||eef.value) ? `${shown} / {{ errors|length }} 件` : `{{ errors|length }} 件`;
+}
+[eq, esf, eef].forEach(el => el.addEventListener('input', applyErr));
+applyErr();
+</script>
+{% else %}
+<div class="empty">
+  <span class="icon">🎉</span>
+  エラーなし
+  <div class="hint">最後の収集ですべて成功しました</div>
+</div>
+{% endif %}
+{% endblock %}
