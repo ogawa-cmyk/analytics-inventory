@@ -73,6 +73,11 @@
     <option value="yes">連携あり</option>
     <option value="no">連携なし</option>
   </select>
+  <select id="excl-filter">
+    <option value="">監視除外: 含む</option>
+    <option value="no">除外中を隠す</option>
+    <option value="yes">除外中のみ</option>
+  </select>
   <span class="small" id="match-count"></span>
 </div>
 
@@ -80,6 +85,7 @@
 <table id="tbl">
   <thead>
     <tr>
+      <th data-tip="チェックすると監視から除外します（要対応・変化ログ・週次メール・自動診断の対象外。一覧には残ります）">🔕</th>
       <th data-type="str">認証Gmail</th>
       <th data-type="str">サイト</th>
       <th data-type="str">タイプ</th>
@@ -102,7 +108,10 @@
       data-type="{{ s.site_type }}"
       data-grade="{{ s.health_grade }}"
       data-ga4link="{{ 'yes' if s.has_ga4_link else 'no' }}"
+      data-excl="{{ 'yes' if s.ann_excluded else 'no' }}"
+      class="{{ 'excluded-row' if s.ann_excluded }}"
       data-search="{{ (s.site_url ~ ' ' ~ s.domain ~ ' ' ~ s.permission_level)|lower }}">
+      <td class="excl-cell"><input type="checkbox" class="excl-check" {% if s.ann_excluded %}checked{% endif %} onchange="toggleExcluded(this, 'sc_sites', '{{ s.site_hash }}')" title="監視から除外" aria-label="監視から除外"></td>
       <td class="small">{{ s.auth_email }}</td>
       <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a></td>
       <td class="small">{% if s.site_type == 'DOMAIN' %}<span class="badge b-role">ドメイン</span>{% else %}<span class="badge b-role-edit">URL Pre</span>{% endif %}</td>
@@ -135,6 +144,7 @@ const ef = document.getElementById('email-filter');
 const tf = document.getElementById('type-filter');
 const gf = document.getElementById('grade-filter');
 const lf = document.getElementById('ga4-filter');
+const exf = document.getElementById('excl-filter');
 const tbl = document.getElementById('tbl');
 const cnt = document.getElementById('match-count');
 const total = tbl.tBodies[0].rows.length;
@@ -148,16 +158,33 @@ function applyFilter(){
     const okT = !tf.value || r.dataset.type === tf.value;
     const okG = !gf.value || r.dataset.grade === gf.value;
     const okL = !lf.value || r.dataset.ga4link === lf.value;
-    const ok = okS && okE && okT && okG && okL;
+    const okX = !exf.value || r.dataset.excl === exf.value;
+    const ok = okS && okE && okT && okG && okL && okX;
     r.style.display = ok ? '' : 'none';
     if(ok) shown++;
   }
-  cnt.textContent = (s||ef.value||tf.value||gf.value||lf.value) ? `${shown} / ${total} 件` : `${total} 件`;
+  cnt.textContent = (s||ef.value||tf.value||gf.value||lf.value||exf.value) ? `${shown} / ${total} 件` : `${total} 件`;
   const emptyEl = document.getElementById('tbl-empty');
   if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
-[q, ef, tf, gf, lf].forEach(el => el.addEventListener('input', applyFilter));
+[q, ef, tf, gf, lf, exf].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
+
+async function toggleExcluded(el, kind, key){
+  const newVal = el.checked;
+  try {
+    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind, key, excluded:newVal})});
+    if(!r.ok) throw new Error('save failed');
+    const tr = el.closest('tr');
+    tr.dataset.excl = newVal ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', newVal);
+    showToast(newVal ? '🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）' : '🔔 監視対象に戻しました');
+    applyFilter();
+  } catch(e){
+    el.checked = !newVal;
+    showToast('保存失敗: ' + e.message, 'error');
+  }
+}
 
 const sortDir = {};
 tbl.tHead.querySelectorAll('th').forEach((th, i) => {

@@ -182,12 +182,18 @@ def start_job(job_id: str) -> None:
 
 
 def select_properties_alerted(inv: dict, max_n: int = DEFAULT_MAX_BATCH) -> list[str]:
-    """Return property_ids that have alerts (used by auto-diagnose and 'select alerted' helper)."""
+    """Return property_ids that have alerts (used by auto-diagnose and 'select alerted' helper).
+
+    監視除外（annotations.excluded）のプロパティは対象外。"""
+    import annotations as ann
     import health
     props = inv.get("properties", [])
     health.enrich_properties(props)
+    excluded = ann.excluded_ids("properties")
     out = []
     for p in props:
+        if str(p.get("property_id")) in excluded:
+            continue
         if p.get("has_error_alert") or (p.get("alert_count") or 0) >= 2 or (p.get("health_grade") in ("D", "F")):
             out.append(str(p.get("property_id")))
         if len(out) >= max_n:

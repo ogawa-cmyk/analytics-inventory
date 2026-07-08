@@ -73,6 +73,7 @@ def _load_inventory() -> dict:
     health.enrich_properties(inv.get("properties", []))
     ann.enrich_properties(inv.get("properties", []))
     ann.enrich_containers(inv.get("gtm_containers", []))
+    ann.enrich_sc_sites(inv.get("sc_sites", []) or [])
     health.enrich_containers_with_score(inv.get("gtm_containers", []), _load_gtm_live)
     # SC enrichment uses GA4 domains for linkage detection.
     # Collect domains from each property's data stream URIs.
@@ -129,13 +130,16 @@ def home():
     top_categories = ai_executor.top_issue_categories(top_n=5)
 
     # === LAYER 4 — Trends & highlights ===
+    # 監視除外（ann_excluded）は要対応・変化・クロス参照の対象から外す
+    mon_props = [p for p in props if not p.get("ann_excluded")]
+    mon_conts = [c for c in conts if not c.get("ann_excluded")]
     recent_changes = []
     try:
         snaps = diff_mod.list_snapshots()
         if len(snaps) >= 2:
             prev = diff_mod.load_snapshot(snaps[1]["file"])
             prev_map = {str(p.get("property_id")): p for p in (prev.get("properties") or [])}
-            for p in props:
+            for p in mon_props:
                 d = diff_mod.diff_property(p, prev_map.get(str(p.get("property_id"))))
                 if d and not d.get("first_seen"):
                     recent_changes.append({"prop": p, "diff": d})
@@ -149,26 +153,26 @@ def home():
         recent_changes = []
 
     error_props = sorted(
-        [p for p in props if p.get("has_error_alert")],
+        [p for p in mon_props if p.get("has_error_alert")],
         key=lambda p: p.get("health_score") or 0,
     )[:10]
     top_health = sorted(props, key=lambda p: -(p.get("health_score") or 0))[:5]
 
     gtm_error_conts = sorted(
-        [c for c in conts if c.get("has_error_alert") or c.get("health_grade") in ("D", "F")
+        [c for c in mon_conts if c.get("has_error_alert") or c.get("health_grade") in ("D", "F")
          or c.get("_score_summary", {}).get("ua_count", 0) >= 3
          or not (c.get("ga4_measurement_ids") or [])],
         key=lambda c: c.get("health_score") or 0,
     )[:10]
     gtm_top_health = sorted(conts, key=lambda c: -(c.get("health_score") or 0))[:5]
 
-    cross = crossref.build(props, conts)
+    cross = crossref.build(mon_props, mon_conts)
     duplicate_mids = cross["duplicate_mids_in_containers"][:10]
 
     # Mismatch: GA4 properties whose MID is not received by any GTM container
     mismatch_props = []
     mid_to_cont = cross["mid_to_containers"]
-    for p in props:
+    for p in mon_props:
         mids = p.get("measurement_ids") or []
         unrelated = [mid for mid in mids if mid and not mid_to_cont.get(mid)]
         if unrelated and p.get("is_tracked"):
@@ -342,8 +346,10 @@ def api_bulk_select_alerted():
 @app.route("/api/alerts/<kind>")
 def api_alerts(kind: str):
     inv = _load_inventory()
-    props = inv.get("properties", []) or []
-    conts = inv.get("gtm_containers", []) or []
+    # 監視除外はドリルダウンにも出さない
+    props = [p for p in (inv.get("properties", []) or []) if not p.get("ann_excluded")]
+    conts = [c for c in (inv.get("gtm_containers", []) or []) if not c.get("ann_excluded")]
+    inv["sc_sites"] = [s for s in (inv.get("sc_sites") or []) if not s.get("ann_excluded")]
     items: list = []
 
     if kind == "untracked":
@@ -670,18 +676,19 @@ def api_annotate():
     data = request.get_json(force=True, silent=True) or request.form
     kind = data.get("kind")
     key = str(data.get("key") or "")
-    if kind not in ("properties", "containers") or not key:
+    if kind not in ("properties", "containers", "sc_sites") or not key:
         return jsonify({"ok": False, "error": "kind/key invalid"}), 400
     payload = {}
     if "tags" in data:
         payload["tags"] = data["tags"]
     if "note" in data:
         payload["note"] = data["note"]
-    if "favorite" in data:
-        fav = data["favorite"]
-        if isinstance(fav, str):
-            fav = fav.lower() in ("1", "true", "yes", "on")
-        payload["favorite"] = fav
+    for bkey in ("favorite", "excluded"):
+        if bkey in data:
+            v = data[bkey]
+            if isinstance(v, str):
+                v = v.lower() in ("1", "true", "yes", "on")
+            payload[bkey] = v
     cur = ann.set_annotation(kind, key, **payload)
     return jsonify({"ok": True, "current": cur, "all_tags": ann.all_tags()})
 
@@ -867,7 +874,7 @@ def usage_page():
 @app.route("/changes")
 def changes_page():
     inv = _load_inventory()
-    events = changes_mod.load_log(limit=500)
+    events = changes_mod.filter_excluded(changes_mod.load_log(limit=500))
     # ログが空でもスナップショットが2件以上あればオンザフライで計算して表示
     computed_live = False
     if not events:
@@ -875,7 +882,7 @@ def changes_page():
         if len(snaps) >= 2:
             cur = diff_mod.load_snapshot(snaps[0]["file"]) or {}
             prev = diff_mod.load_snapshot(snaps[1]["file"]) or {}
-            events = changes_mod.detect_changes(cur, prev)
+            events = changes_mod.detect_changes(cur, prev, exclude=changes_mod.monitoring_exclusions())
             for e in events:
                 e["snapshot"] = snaps[0]["stamp"]
                 e["prev_snapshot"] = snaps[1]["stamp"]
@@ -889,7 +896,7 @@ def changes_page():
 @app.route("/api/changes")
 def api_changes():
     limit = min(int(request.args.get("limit", 100)), 1000)
-    return jsonify({"events": changes_mod.load_log(limit=limit)})
+    return jsonify({"events": changes_mod.filter_excluded(changes_mod.load_log(limit=limit))})
 
 
 # ============================================================

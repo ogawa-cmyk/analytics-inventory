@@ -28,6 +28,9 @@ def detect_newly_alerted() -> list[dict]:
     inv = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
     props = inv.get("properties", [])
     health.enrich_properties(props)
+    import annotations as ann
+    excluded = ann.excluded_ids("properties")
+    props = [p for p in props if str(p.get("property_id")) not in excluded]
 
     snaps = diff_mod.list_snapshots()
     prev_map: dict = {}

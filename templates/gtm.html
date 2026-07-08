@@ -42,6 +42,11 @@
     <option value="">お気に入り: すべて</option>
     <option value="yes">お気に入りのみ</option>
   </select>
+  <select id="excl-filter">
+    <option value="">監視除外: 含む</option>
+    <option value="no">除外中を隠す</option>
+    <option value="yes">除外中のみ</option>
+  </select>
   <span class="small" id="match-count"></span>
   <a href="/export/gtm.csv" class="btn" style="margin-left:auto">⬇ CSV</a>
 </div>
@@ -51,6 +56,7 @@
   <thead>
     <tr>
       <th>★</th>
+      <th data-tip="チェックすると監視から除外します（要対応・変化ログ・週次メール・自動診断の対象外。一覧には残ります）">🔕</th>
       <th data-k="auth_email" data-type="str">認証Gmail</th>
       <th data-k="account_name" data-type="str">GTMアカウント</th>
       <th data-k="name" data-type="str">コンテナ</th>
@@ -80,11 +86,14 @@
       data-ga4="{{ 'yes' if c.ga4_measurement_ids else 'no' }}"
       data-tags="{{ (c.ann_tags or [])|join('|')|lower }}"
       data-fav="{{ 'yes' if c.ann_favorite else 'no' }}"
+      data-excl="{{ 'yes' if c.ann_excluded else 'no' }}"
+      class="{{ 'excluded-row' if c.ann_excluded }}"
       data-grade="{{ c.health_grade }}"
       data-tagcount="{{ c.tag_count }}"
       data-triggercount="{{ c.trigger_count }}"
       data-varcount="{{ c.variable_count }}">
       <td><button type="button" class="fav-star {% if c.ann_favorite %}on{% endif %}" data-on="{{ '1' if c.ann_favorite else '0' }}" onclick="toggleFavGtm(this, '{{ c.container_id }}')" aria-label="{{ 'お気に入り解除' if c.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if c.ann_favorite else 'false' }}">★</button></td>
+      <td class="excl-cell"><input type="checkbox" class="excl-check" {% if c.ann_excluded %}checked{% endif %} onchange="toggleExcluded(this, 'containers', '{{ c.container_id }}')" title="監視から除外" aria-label="監視から除外"></td>
       <td class="small">{{ c.auth_email }}</td>
       <td>{{ c.account_name }}</td>
       <td>{% if has_detail.get(c.container_id) %}<a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
@@ -125,6 +134,7 @@ const gf = document.getElementById('ga4-filter');
 const gradef = document.getElementById('grade-filter');
 const tagf = document.getElementById('tag-filter');
 const ff = document.getElementById('fav-filter');
+const exf = document.getElementById('excl-filter');
 const tbl = document.getElementById('tbl');
 const cnt = document.getElementById('match-count');
 const total = tbl.tBodies[0].rows.length;
@@ -140,16 +150,17 @@ function applyFilter(){
     const okGrade = !gradef.value || r.dataset.grade === gradef.value;
     const okT = !tagf.value || ('|'+r.dataset.tags+'|').includes('|'+tagf.value.toLowerCase()+'|');
     const okF = !ff.value || r.dataset.fav === ff.value;
-    const ok = okS && okE && okA && okG && okGrade && okT && okF;
+    const okX = !exf.value || r.dataset.excl === exf.value;
+    const ok = okS && okE && okA && okG && okGrade && okT && okF && okX;
     r.style.display = ok ? '' : 'none';
     if(ok) shown++;
   }
-  const hasFilter = s || ef.value || af.value || gf.value || gradef.value || tagf.value || ff.value;
+  const hasFilter = s || ef.value || af.value || gf.value || gradef.value || tagf.value || ff.value || exf.value;
   cnt.textContent = hasFilter ? `${shown} / ${total} 件` : `${total} 件`;
   const emptyEl = document.getElementById('tbl-empty');
   if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
-[q, ef, af, gf, gradef, tagf, ff].forEach(el => el.addEventListener('input', applyFilter));
+[q, ef, af, gf, gradef, tagf, ff, exf].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
 
 async function toggleFavGtm(el, cid){
@@ -163,6 +174,22 @@ async function toggleFavGtm(el, cid){
     el.setAttribute('aria-label', newVal ? 'お気に入り解除' : 'お気に入りに追加');
     showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
   } catch(e){ showToast('失敗'); }
+}
+
+async function toggleExcluded(el, kind, key){
+  const newVal = el.checked;
+  try {
+    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind, key, excluded:newVal})});
+    if(!r.ok) throw new Error('save failed');
+    const tr = el.closest('tr');
+    tr.dataset.excl = newVal ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', newVal);
+    showToast(newVal ? '🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）' : '🔔 監視対象に戻しました');
+    applyFilter();
+  } catch(e){
+    el.checked = !newVal;
+    showToast('保存失敗: ' + e.message, 'error');
+  }
 }
 
 const sortDir = {};

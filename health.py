@@ -91,11 +91,13 @@ def detect_alerts(p: dict) -> list[dict]:
 
 
 def alert_count_summary(properties: list[dict]) -> dict:
-    """Aggregate alert counts across all properties."""
+    """Aggregate alert counts across all properties (監視除外 ann_excluded はスキップ)."""
     error_props = 0
     warn_props = 0
     issues = {"untracked": 0, "no_streams": 0, "no_ke": 0, "cd_overflow": 0, "api_err": 0}
     for p in properties:
+        if p.get("ann_excluded"):
+            continue
         alerts = detect_alerts(p)
         levels = [a["level"] for a in alerts]
         if "error" in levels:
@@ -319,6 +321,8 @@ def container_alert_summary(containers: list[dict]) -> dict:
     warn_c = 0
     issues = {"no_tags": 0, "no_ga4": 0, "ua_left": 0, "no_version": 0}
     for c in containers:
+        if c.get("ann_excluded"):
+            continue
         levels = [a["level"] for a in c.get("_alerts", [])]
         if "error" in levels:
             error_c += 1
@@ -469,6 +473,7 @@ def enrich_sc_sites(sites: list[dict], ga4_domains: set) -> list[dict]:
 
 
 def sc_alert_summary(sites: list[dict]) -> dict:
+    sites = [s for s in sites if not s.get("ann_excluded")]
     err = sum(1 for s in sites if s.get("has_error_alert"))
     warn = sum(1 for s in sites if not s.get("has_error_alert") and any(a["level"] == "warn" for a in (s.get("_alerts") or [])))
     issues = {

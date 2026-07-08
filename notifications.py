@@ -99,6 +99,8 @@ def build_summary(inv: dict) -> dict:
     def _bad(items, name_key):
         rows = []
         for x in items:
+            if x.get("ann_excluded"):
+                continue
             if x.get("health_grade") in ("D", "F") or x.get("has_error_alert"):
                 rows.append({
                     "name": x.get(name_key) or "",

@@ -43,13 +43,40 @@ def _now() -> str:
 #  検出ロジック（純粋関数）
 # ============================================================
 
-def detect_changes(cur: dict, prev: dict) -> list[dict]:
-    """2つのスナップショット（diff.save_snapshot 形式）を比較して変化イベントを返す。"""
+def detect_changes(cur: dict, prev: dict, exclude: dict | None = None) -> list[dict]:
+    """2つのスナップショット（diff.save_snapshot 形式）を比較して変化イベントを返す。
+
+    exclude: {"ga4": set, "gtm": set, "sc": set} — 監視除外中のIDは検出対象外。
+    """
+    ex = exclude or {}
     events: list[dict] = []
     events.extend(_detect_ga4(cur.get("properties") or [], prev.get("properties") or []))
     events.extend(_detect_gtm(cur.get("gtm_containers") or [], prev.get("gtm_containers") or []))
     events.extend(_detect_sc(cur.get("sc_sites") or [], prev.get("sc_sites") or []))
+    if ex:
+        events = [e for e in events if e.get("entity_id") not in (ex.get(e.get("kind")) or set())]
     return events
+
+
+def filter_excluded(events: list[dict]) -> list[dict]:
+    """現在監視除外中のエンティティのイベントを表示から間引く（過去ログにも適用）。"""
+    ex = monitoring_exclusions()
+    if not any(ex.values()):
+        return events
+    return [e for e in events if e.get("entity_id") not in (ex.get(e.get("kind")) or set())]
+
+
+def monitoring_exclusions() -> dict:
+    """annotations の監視除外設定を kind 別 ID セットで返す。"""
+    try:
+        import annotations as ann
+        return {
+            "ga4": ann.excluded_ids("properties"),
+            "gtm": ann.excluded_ids("containers"),
+            "sc": ann.excluded_ids("sc_sites"),
+        }
+    except Exception:
+        return {}
 
 
 def _ev(severity: str, kind: str, entity_id: str, entity_name: str,
@@ -256,7 +283,7 @@ def record_changes() -> list[dict]:
 
     cur = diff_mod.load_snapshot(cur_meta["file"]) or {}
     prev = diff_mod.load_snapshot(prev_meta["file"]) or {}
-    events = detect_changes(cur, prev)
+    events = detect_changes(cur, prev, exclude=monitoring_exclusions())
     now = _now()
     for e in events:
         e["detected_at"] = now
@@ -268,7 +295,7 @@ def record_changes() -> list[dict]:
 
 
 def recent_events(days: int = 7, limit: int = 100) -> list[dict]:
-    """直近 N 日の変化イベント（新しい順）。週次メールで使用。"""
+    """直近 N 日の変化イベント（新しい順・監視除外を間引き済み）。週次メールで使用。"""
     out = []
     cutoff = None
     try:
@@ -276,7 +303,7 @@ def recent_events(days: int = 7, limit: int = 100) -> list[dict]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     except Exception:
         pass
-    for e in load_log(limit=MAX_LOG_ENTRIES):
+    for e in filter_excluded(load_log(limit=MAX_LOG_ENTRIES)):
         if cutoff is not None:
             try:
                 dt = datetime.fromisoformat(e.get("detected_at", ""))

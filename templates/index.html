@@ -40,6 +40,11 @@
     <option value="">お気に入り: すべて</option>
     <option value="yes">お気に入りのみ</option>
   </select>
+  <select id="excl-filter">
+    <option value="">監視除外: 含む</option>
+    <option value="no">除外中を隠す</option>
+    <option value="yes">除外中のみ</option>
+  </select>
   <button class="btn" onclick="selectAlerted()" style="margin-left:auto">⚠ アラート分を選択</button>
   <button class="btn" id="bulk-btn" onclick="openBulkDialog()" disabled style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">🤖 一括AI分析 (<span id="sel-count">0</span>)</button>
   <a href="/export/properties.csv" class="btn">⬇ CSV</a>
@@ -52,6 +57,7 @@
     <tr>
       <th><input type="checkbox" id="check-all" onclick="toggleAll(this.checked)"></th>
       <th>★</th>
+      <th data-tip="チェックすると監視から除外します（要対応・変化ログ・週次メール・自動診断の対象外。一覧には残ります）">🔕</th>
       <th data-type="str">認証Gmail</th>
       <th data-type="str">GA4アカウント</th>
       <th data-type="str">プロパティ</th>
@@ -76,9 +82,12 @@
       data-grade="{{ p.health_grade }}"
       data-tags="{{ (p.ann_tags or [])|join('|')|lower }}"
       data-fav="{{ 'yes' if p.ann_favorite else 'no' }}"
+      data-excl="{{ 'yes' if p.ann_excluded else 'no' }}"
+      class="{{ 'excluded-row' if p.ann_excluded }}"
       data-search="{{ (p.display_name ~ ' ' ~ p.property_id ~ ' ' ~ p.account_display_name ~ ' ' ~ (p.ann_tags or [])|join(' ') ~ ' ' ~ (p.ann_note or ''))|lower }}">
       <td><input type="checkbox" class="row-check" value="{{ p.property_id }}" onchange="updateSelCount()"></td>
       <td><button type="button" class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')" aria-label="{{ 'お気に入り解除' if p.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if p.ann_favorite else 'false' }}">★</button></td>
+      <td class="excl-cell"><input type="checkbox" class="excl-check" {% if p.ann_excluded %}checked{% endif %} onchange="toggleExcluded(this, 'properties', '{{ p.property_id }}')" title="監視から除外" aria-label="監視から除外"></td>
       <td class="small">{{ p.auth_email }}</td>
       <td>{{ p.account_display_name }}</td>
       <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a></td>
@@ -123,6 +132,7 @@ const em = document.getElementById('email-filter');
 const gf = document.getElementById('grade-filter');
 const tagf = document.getElementById('tag-filter');
 const ff = document.getElementById('fav-filter');
+const exf = document.getElementById('excl-filter');
 function apply(){
   const s = q.value.toLowerCase();
   let shown = 0;
@@ -134,14 +144,15 @@ function apply(){
     const okG = !gf.value || row.dataset.grade === gf.value;
     const okTag = !tagf.value || ('|'+row.dataset.tags+'|').includes('|'+tagf.value.toLowerCase()+'|');
     const okF = !ff.value || row.dataset.fav === ff.value;
-    const ok = okS && okT && okE && okM && okG && okTag && okF;
+    const okX = !exf.value || row.dataset.excl === exf.value;
+    const ok = okS && okT && okE && okM && okG && okTag && okF && okX;
     row.style.display = ok ? '' : 'none';
     if(ok) shown++;
   }
   const emptyEl = document.getElementById('tbl-empty');
   if(emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
 }
-[q,tf,ef,em,gf,tagf,ff].forEach(el => el.addEventListener('input', apply));
+[q,tf,ef,em,gf,tagf,ff,exf].forEach(el => el.addEventListener('input', apply));
 
 let sortDir = {};
 tbl.tHead.querySelectorAll('th').forEach((th, i) => {
@@ -244,6 +255,7 @@ function renderActiveChips(){
     {label:'グレード', el:gf, clear:()=>{gf.value=''}},
     {label:'タグ', el:tagf, clear:()=>{tagf.value=''}},
     {label:'お気に入り', el:ff, map:{yes:'のみ'}, clear:()=>{ff.value=''}},
+    {label:'監視除外', el:exf, map:{no:'隠す', yes:'のみ'}, clear:()=>{exf.value=''}},
   ];
   c.innerHTML = items.filter(i => i.el && i.el.value).map(i => {
     const v = i.map ? (i.map[i.el.value] || i.el.value) : i.el.value;
@@ -252,8 +264,28 @@ function renderActiveChips(){
 }
 const _origApply = apply;
 window.apply = function(){ _origApply(); renderActiveChips(); };
-[q,tf,ef,em,gf,tagf,ff].forEach(el => el && el.addEventListener('input', renderActiveChips));
+[q,tf,ef,em,gf,tagf,ff,exf].forEach(el => el && el.addEventListener('input', renderActiveChips));
 renderActiveChips();
+
+async function toggleExcluded(el, kind, key){
+  const newVal = el.checked;
+  try {
+    const r = await fetch('/api/annotate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({kind, key, excluded:newVal})
+    });
+    if(!r.ok) throw new Error('save failed');
+    const tr = el.closest('tr');
+    tr.dataset.excl = newVal ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', newVal);
+    showToast(newVal ? '🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）' : '🔔 監視対象に戻しました');
+    apply();
+  } catch(e){
+    el.checked = !newVal;
+    showToast('保存失敗: ' + e.message, 'error');
+  }
+}
 
 async function toggleFav(el, pid){
   const on = el.dataset.on === '1';
