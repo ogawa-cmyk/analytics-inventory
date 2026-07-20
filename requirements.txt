@@ -7,3 +7,4 @@ google-analytics-admin>=0.22.0
 google-analytics-data>=0.18.0
 flask>=3.0.0
 requests>=2.31.0
+fpdf2>=2.7.0

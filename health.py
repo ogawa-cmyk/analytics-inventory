@@ -1,9 +1,13 @@
 """Property health scoring + alert detection.
 
 Score is 0-100 based on weighted signals. Alerts are issues that demand attention.
+スコアリング基準は固定（全ユーザー共通の比較可能性を保つ）。
+アラート判定の一部閾値は thresholds.py でカスタマイズ可能。
 """
 from __future__ import annotations
 from typing import Optional
+
+import thresholds as _th
 
 
 def score_property(p: dict) -> dict:
@@ -81,7 +85,7 @@ def detect_alerts(p: dict) -> list[dict]:
         out.append({"level": "error", "message": "データストリーム未設定"})
 
     cd = p.get("custom_dimension_count") or 0
-    if cd > 50:
+    if cd > _th.get()["cd_warn"]:
         out.append({"level": "warn", "message": f"カスタムディメンションが{cd}件と過多"})
 
     if not p.get("my_roles"):
@@ -95,6 +99,7 @@ def alert_count_summary(properties: list[dict]) -> dict:
     error_props = 0
     warn_props = 0
     issues = {"untracked": 0, "no_streams": 0, "no_ke": 0, "cd_overflow": 0, "api_err": 0}
+    cd_warn = _th.get()["cd_warn"]
     for p in properties:
         if p.get("ann_excluded"):
             continue
@@ -110,7 +115,7 @@ def alert_count_summary(properties: list[dict]) -> dict:
             issues["no_streams"] += 1
         if (p.get("key_event_count") or 0) == 0:
             issues["no_ke"] += 1
-        if (p.get("custom_dimension_count") or 0) > 50:
+        if (p.get("custom_dimension_count") or 0) > cd_warn:
             issues["cd_overflow"] += 1
         if p.get("data_api_ok") is False:
             issues["api_err"] += 1
@@ -303,7 +308,7 @@ def detect_container_alerts(c: dict, live: dict | None = None) -> list[dict]:
     if summary["has_live"]:
         if summary["ga4_config_count"] == 0 and (c.get("ga4_measurement_ids") or []):
             out.append({"level": "warn", "message": "GA4設定タグ(gaawc)が存在しない"})
-        if summary["ua_count"] >= 3:
+        if summary["ua_count"] >= _th.get()["ua_warn"]:
             out.append({"level": "warn", "message": f"レガシーUA系タグが{summary['ua_count']}件残存"})
         if summary["tag_total"] > 0:
             ratio = summary["tag_paused"] / summary["tag_total"]
@@ -320,6 +325,7 @@ def container_alert_summary(containers: list[dict]) -> dict:
     error_c = 0
     warn_c = 0
     issues = {"no_tags": 0, "no_ga4": 0, "ua_left": 0, "no_version": 0}
+    ua_warn = _th.get()["ua_warn"]
     for c in containers:
         if c.get("ann_excluded"):
             continue
@@ -332,7 +338,7 @@ def container_alert_summary(containers: list[dict]) -> dict:
             issues["no_tags"] += 1
         if not (c.get("ga4_measurement_ids") or []):
             issues["no_ga4"] += 1
-        if c.get("_score_summary", {}).get("ua_count", 0) >= 3:
+        if c.get("_score_summary", {}).get("ua_count", 0) >= ua_warn:
             issues["ua_left"] += 1
         if not c.get("version_id"):
             issues["no_version"] += 1

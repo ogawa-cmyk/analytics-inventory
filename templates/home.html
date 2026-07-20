@@ -2,6 +2,14 @@
 {% block title %}ダッシュボード{% endblock %}
 {% block body %}
 
+{% if update_info %}
+<div class="alert-banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <span>🆕 新しいバージョン <b>v{{ update_info.latest }}</b> が公開されています（現在: v{{ update_info.current }}）。</span>
+  <a class="btn" href="{{ update_info.url }}" target="_blank" rel="noopener">更新内容を見る</a>
+  <span class="small">更新方法: GitHubから最新ZIPをダウンロードして上書き（data/・tokens/・.env はそのままでOK）</span>
+</div>
+{% endif %}
+
 <style>
   .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
   @media (max-width:1280px){.health-grid{grid-template-columns:repeat(2,1fr)}}

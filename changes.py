@@ -29,10 +29,11 @@ from config import DATA_DIR
 CHANGES_LOG_PATH = DATA_DIR / "changes_log.json"
 MAX_LOG_ENTRIES = 1000
 
-# セッション/クリックの急減とみなす閾値（前回比 -50% 超の減少）
-PLUNGE_RATIO = 0.5
-# 急減判定の最小母数（小さすぎる数字のブレを無視）
-PLUNGE_MIN_BASE = 50
+
+def _plunge_params() -> tuple[float, int]:
+    """急減判定の (係数, 最小母数)。thresholds.py の設定を反映。"""
+    import thresholds
+    return thresholds.plunge_factor(), thresholds.get()["plunge_min_base"]
 
 
 def _now() -> str:
@@ -123,9 +124,10 @@ def _detect_ga4(cur_props: list, prev_props: list) -> list[dict]:
                            f"キーイベントが追加されました: {', '.join(added)}"))
 
         # セッション急減
+        plunge_factor, plunge_min = _plunge_params()
         prv_s = pv.get("sessions_7d") or 0
         cur_s = p.get("sessions_7d") or 0
-        if prv_s >= PLUNGE_MIN_BASE and cur_s < prv_s * PLUNGE_RATIO:
+        if prv_s >= plunge_min and cur_s < prv_s * plunge_factor:
             pct = round((cur_s - prv_s) / prv_s * 100)
             out.append(_ev("warn", "ga4", pid, name, "sessions_plunge",
                            f"セッションが急減: {prv_s:,} → {cur_s:,}（{pct}%）"))
@@ -217,9 +219,10 @@ def _detect_sc(cur_sites: list, prev_sites: list) -> list[dict]:
         if pv is None:
             continue  # SC サイトの追加はノイズになりやすいので通知しない
 
+        plunge_factor, plunge_min = _plunge_params()
         prv_c = pv.get("clicks_28d") or 0
         cur_c = s.get("clicks_28d") or 0
-        if prv_c >= PLUNGE_MIN_BASE and cur_c < prv_c * PLUNGE_RATIO:
+        if prv_c >= plunge_min and cur_c < prv_c * plunge_factor:
             pct = round((cur_c - prv_c) / prv_c * 100)
             out.append(_ev("warn", "sc", sh, name, "clicks_plunge",
                            f"検索クリックが急減: {prv_c:,} → {cur_c:,}（{pct}%）"))

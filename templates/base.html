@@ -198,6 +198,8 @@
   tr.excluded-row td{opacity:.45}
   tr.excluded-row td.excl-cell{opacity:1}
   .excl-check{cursor:pointer;width:15px;height:15px;accent-color:var(--g-text-muted)}
+  .excl-select{font-size:11px;padding:2px 2px;border:1px solid var(--g-border);border-radius:4px;background:var(--g-card);color:var(--g-text);max-width:92px;cursor:pointer}
+  .excl-select.off{border-color:var(--g-text-muted);background:var(--g-row-alt)}
   .fav-star{cursor:pointer;color:#bdbdbd;font-size:16px}
   .fav-star.on{color:#ffb300}
   button.fav-star{background:none;border:none;padding:0;font:inherit;line-height:1}
@@ -327,6 +329,7 @@
     <a href="/gtm" class="{% if request.path == '/gtm' or request.path.startswith('/gtm/') %}active{% endif %}">GTM</a>
     <a href="/search-console" class="{% if request.path.startswith('/search-console') or request.path.startswith('/sc/') %}active{% endif %}">Search Console</a>
     <span class="nav-divider"></span>
+    <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">クライアント</a>
     <a href="/changes" class="{% if request.path == '/changes' %}active{% endif %}">変化ログ</a>
     <div class="dd" id="dd-ai">
       <button class="dd-btn" onclick="toggleDd('dd-ai')">分析</button>
@@ -336,6 +339,7 @@
         <a href="#" onclick="runQuickAuto(event)">自動診断を実行</a>
         <div class="dd-sub">監視・通知</div>
         <a href="/settings/notifications">週次メール通知設定</a>
+        <a href="/settings/thresholds">監視しきい値設定</a>
       </div>
     </div>
     <div class="dd" id="dd-help">

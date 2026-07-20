@@ -524,6 +524,23 @@ def _ensure_demo_data():
     p_cur = _diff.save_snapshot(INVENTORY)
     p_cur.rename(snap_dir / "20260629T010000Z.json")
     _changes.record_changes()
+    # デモ用クライアント2社
+    _write(_DEMO / "clients.json", {"clients": {
+        "cl_de000001": {
+            "name": "株式会社デモ小売", "note": "EC支援クライアント。担当: 田中",
+            "property_ids": [p["property_id"] for p in PROPS if p["auth_email"] == "tanaka@demo.example.com"],
+            "container_ids": [c["container_id"] for c in CONTS if c["auth_email"] == "tanaka@demo.example.com"],
+            "site_hashes": [s["site_hash"] for s in SC_SITES if s["auth_email"] == "tanaka@demo.example.com"],
+            "created_at": COLLECTED,
+        },
+        "cl_de000002": {
+            "name": "デモエージェンシー", "note": "コーポレート・メディア一式",
+            "property_ids": [p["property_id"] for p in PROPS if p["auth_email"] == "suzuki@demo.example.com"],
+            "container_ids": [c["container_id"] for c in CONTS if c["auth_email"] == "suzuki@demo.example.com"],
+            "site_hashes": [s["site_hash"] for s in SC_SITES if s["auth_email"] == "suzuki@demo.example.com"],
+            "created_at": COLLECTED,
+        },
+    }})
     print(f"[demo] 完了: {_DEMO}")
 
 _ensure_demo_data()

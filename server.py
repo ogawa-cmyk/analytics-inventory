@@ -24,11 +24,14 @@ import ai_prompts
 import annotations as ann
 import bulk_analyzer
 import changes as changes_mod
+import clients as clients_mod
 import crossref
 import diff as diff_mod
 import health
 import notifications
 import search_index
+import thresholds
+import update_check
 from config import DEMO_MODE, DETAILS_DIR, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -103,6 +106,12 @@ def inject_globals():
 @app.route("/")
 def home():
     inv = _load_inventory()
+    update_info = None
+    if not DEMO_MODE:
+        try:
+            update_info = update_check.get_update_info()
+        except Exception:
+            update_info = None
     props = inv.get("properties", [])
     conts = inv.get("gtm_containers", [])
     alerts = health.alert_count_summary(props)
@@ -158,9 +167,10 @@ def home():
     )[:10]
     top_health = sorted(props, key=lambda p: -(p.get("health_score") or 0))[:5]
 
+    _ua_warn = thresholds.get()["ua_warn"]
     gtm_error_conts = sorted(
         [c for c in mon_conts if c.get("has_error_alert") or c.get("health_grade") in ("D", "F")
-         or c.get("_score_summary", {}).get("ua_count", 0) >= 3
+         or c.get("_score_summary", {}).get("ua_count", 0) >= _ua_warn
          or not (c.get("ga4_measurement_ids") or [])],
         key=lambda c: c.get("health_score") or 0,
     )[:10]
@@ -208,6 +218,7 @@ def home():
     return render_template(
         "home.html",
         inv=inv,
+        update_info=update_info,
         properties=props,
         containers=conts,
         # layer 1
@@ -393,7 +404,7 @@ def api_alerts(kind: str):
                 })
     elif kind == "cd_overflow":
         for p in props:
-            if (p.get("custom_dimension_count") or 0) > 50:
+            if (p.get("custom_dimension_count") or 0) > thresholds.get()["cd_warn"]:
                 items.append({
                     "kind": "property", "id": p.get("property_id"),
                     "name": p.get("display_name"), "subtitle": p.get("auth_email"),
@@ -403,7 +414,7 @@ def api_alerts(kind: str):
                 })
     elif kind == "ua_left":
         for c in conts:
-            if (c.get("_score_summary") or {}).get("ua_count", 0) >= 3:
+            if (c.get("_score_summary") or {}).get("ua_count", 0) >= thresholds.get()["ua_warn"]:
                 items.append({
                     "kind": "container", "id": c.get("container_id"),
                     "name": c.get("name"), "subtitle": f"{c.get('account_name')} / {c.get('auth_email')}",
@@ -689,6 +700,19 @@ def api_annotate():
             if isinstance(v, str):
                 v = v.lower() in ("1", "true", "yes", "on")
             payload[bkey] = v
+    if "snooze_days" in data:
+        try:
+            days = int(data["snooze_days"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "snooze_daysは数値で指定してください"}), 400
+        if days > 0:
+            from datetime import date as _date, timedelta as _td
+            payload["snooze_until"] = (_date.today() + _td(days=days)).isoformat()
+            payload.setdefault("excluded", False)
+        else:
+            payload["snooze_until"] = None
+    elif payload.get("excluded") is True:
+        payload["snooze_until"] = None  # 恒久除外にしたらスヌーズは解除
     cur = ann.set_annotation(kind, key, **payload)
     return jsonify({"ok": True, "current": cur, "all_tags": ann.all_tags()})
 
@@ -900,6 +924,79 @@ def api_changes():
 
 
 # ============================================================
+#  クライアント別グループ
+# ============================================================
+
+_CLIENT_ID_RE = re.compile(r"^cl_[0-9a-f]{8}$")
+
+
+@app.route("/clients")
+def clients_page():
+    inv = _load_inventory()
+    cs = clients_mod.list_clients()
+    cards = []
+    for cid, c in cs.items():
+        cards.append({"client_id": cid, **c, "summary": clients_mod.summarize(c, inv)})
+    return render_template("clients.html", inv=inv, clients=cards)
+
+
+@app.route("/clients/<cid>")
+def client_detail_page(cid: str):
+    if not _CLIENT_ID_RE.match(cid):
+        abort(404)
+    c = clients_mod.get(cid)
+    if c is None:
+        abort(404)
+    inv = _load_inventory()
+    ent = clients_mod.resolve_entities(c, inv)
+    summary = clients_mod.summarize(c, inv)
+    events = clients_mod.client_change_events(c, days=30, limit=30)
+    return render_template("client_detail.html", inv=inv, cid=cid, client=c,
+                           ent=ent, summary=summary, events=events,
+                           all_props=inv.get("properties", []),
+                           all_conts=inv.get("gtm_containers", []),
+                           all_sites=inv.get("sc_sites", []) or [])
+
+
+@app.route("/clients/<cid>/report.pdf")
+def client_report_pdf(cid: str):
+    if not _CLIENT_ID_RE.match(cid):
+        abort(404)
+    c = clients_mod.get(cid)
+    if c is None:
+        abort(404)
+    import client_report
+    inv = _load_inventory()
+    pdf_bytes = client_report.build_pdf(c, inv)
+    fname = f"health-report-{cid}-{datetime.now().strftime('%Y%m%d')}.pdf"
+    return Response(pdf_bytes, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.route("/api/clients", methods=["POST"])
+def api_clients_create():
+    data = request.get_json(silent=True) or {}
+    c = clients_mod.create(data.get("name") or "", data.get("note") or "")
+    return jsonify({"ok": True, "client": c})
+
+
+@app.route("/api/clients/<cid>", methods=["POST"])
+def api_clients_update(cid: str):
+    if not _CLIENT_ID_RE.match(cid):
+        return jsonify({"ok": False, "error": "invalid id"}), 400
+    data = request.get_json(silent=True) or {}
+    if data.get("_delete"):
+        ok = clients_mod.delete(cid)
+        return jsonify({"ok": ok})
+    allowed = {k: v for k, v in data.items()
+               if k in ("name", "note", "property_ids", "container_ids", "site_hashes")}
+    c = clients_mod.update(cid, **allowed)
+    if c is None:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True, "client": c})
+
+
+# ============================================================
 #  週次メール通知
 # ============================================================
 
@@ -907,6 +1004,25 @@ def api_changes():
 def notify_settings_page():
     inv = _load_inventory()
     return render_template("notify.html", inv=inv, settings=notifications.public_settings())
+
+
+@app.route("/settings/thresholds")
+def thresholds_page():
+    inv = _load_inventory()
+    return render_template("thresholds.html", inv=inv,
+                           th=thresholds.get(), defaults=thresholds.DEFAULTS,
+                           limits=thresholds.LIMITS)
+
+
+@app.route("/api/thresholds", methods=["GET", "POST"])
+def api_thresholds():
+    if request.method == "GET":
+        return jsonify(thresholds.get())
+    if DEMO_MODE:
+        return jsonify({"ok": False, "error": "デモ環境ではしきい値の変更は無効です"}), 403
+    data = request.get_json(silent=True) or {}
+    cur = thresholds.save(data)
+    return jsonify({"ok": True, "thresholds": cur})
 
 
 @app.route("/api/notify/settings", methods=["GET", "POST"])

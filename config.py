@@ -1,6 +1,9 @@
 """GA4 Inventory configuration."""
 from pathlib import Path
 
+VERSION = "1.1.0"
+GITHUB_REPO = "ogawa-cmyk/analytics-inventory"
+
 ROOT = Path(__file__).parent
 TOKENS_DIR = ROOT / "tokens"
 DATA_DIR = ROOT / "data"

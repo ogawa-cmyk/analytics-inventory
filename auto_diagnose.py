@@ -50,10 +50,11 @@ def detect_newly_alerted() -> list[dict]:
         # Key event count dropped
         if prev and (prev.get("key_event_count") or 0) > (p.get("key_event_count") or 0):
             reasons.append(f"KE数減少 {prev.get('key_event_count')} → {p.get('key_event_count')}")
-        # Sessions plunged > 50%
+        # Sessions plunged (閾値は thresholds.py)
         if prev and (prev.get("sessions_7d") or 0) > 0:
+            import thresholds
             cur = p.get("sessions_7d") or 0
-            if cur < prev["sessions_7d"] * 0.5:
+            if cur < prev["sessions_7d"] * thresholds.plunge_factor():
                 reasons.append(f"Sessions急減 {prev['sessions_7d']:,} → {cur:,}")
         # If no prev (first run) we still flag low-grade properties
         if not prev:

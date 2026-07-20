@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — クライアント{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/clients">クライアント</a><span class="sep">/</span><span>{{ client.name }}</span></nav>
+{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 14px;flex-wrap:wrap">
+  <div>
+    <h1 style="font-size:20px;margin:0">🏢 {{ client.name }}</h1>
+    {% if client.note %}<div class="small" style="margin-top:2px">{{ client.note }}</div>{% endif %}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="btn primary" href="/clients/{{ cid }}/report.pdf">📄 PDFレポートを出力</a>
+    <button class="btn" onclick="openAssignModal()">🔗 割り当てを編集</button>
+    <button class="btn" onclick="renameClient()">✏ 名前・メモ</button>
+    <button class="btn danger" onclick="deleteClient()">削除</button>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><span>GA4プロパティ</span><b>{{ summary.ga4.n }}</b><span>平均 {{ summary.ga4.avg }}点</span></div>
+  <div class="kpi" style="border-left-color:#6c5ce7"><span>GTMコンテナ</span><b style="color:#6c5ce7">{{ summary.gtm.n }}</b><span>平均 {{ summary.gtm.avg }}点</span></div>
+  <div class="kpi" style="border-left-color:#0288d1"><span>SCサイト</span><b style="color:#0288d1">{{ summary.sc.n }}</b><span>平均 {{ summary.sc.avg }}点</span></div>
+  <div class="kpi" style="border-left-color:var(--g-error)"><span>要対応</span><b style="color:var(--g-error)">{{ summary.total_bad }}</b><span>D/F・エラー</span></div>
+</div>
+
+{% if summary.total_entities == 0 %}
+<div class="alert-banner">まだ何も割り当てられていません。「🔗 割り当てを編集」からGA4プロパティ・GTMコンテナ・SCサイトを選んでください。</div>
+{% endif %}
+
+<div class="card">
+  <h2>GA4プロパティ ({{ ent.properties|length }})</h2>
+  {% if ent.properties %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>プロパティ</th><th>スコア</th><th>計測</th><th>KE</th><th>Sessions(7d)</th><th>アラート</th></tr></thead>
+    <tbody>
+    {% for p in ent.properties|sort(attribute='health_score') %}
+      <tr class="{{ 'excluded-row' if p.ann_excluded }}">
+        <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a>{% if p.ann_excluded %} <span class="badge b-na">監視除外</span>{% endif %}</td>
+        <td><span class="grade-{{ p.health_grade }}">{{ p.health_grade }}</span> {{ p.health_score }}</td>
+        <td>{% if p.is_tracked %}<span class="badge b-ok">計測中</span>{% else %}<span class="badge b-ng">停止</span>{% endif %}</td>
+        <td>{{ p.key_event_count }}</td>
+        <td>{{ '{:,}'.format(p.sessions_7d) if p.sessions_7d is not none else '—' }}</td>
+        <td>{% if p.alert_count %}<span class="alert-warn">{{ p.alert_count }}件</span>{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="small">割り当てなし</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>GTMコンテナ ({{ ent.containers|length }})</h2>
+  {% if ent.containers %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>コンテナ</th><th>スコア</th><th>タグ</th><th>GA4連携</th><th>アラート</th></tr></thead>
+    <tbody>
+    {% for c in ent.containers|sort(attribute='health_score') %}
+      <tr class="{{ 'excluded-row' if c.ann_excluded }}">
+        <td><a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a>{% if c.ann_excluded %} <span class="badge b-na">監視除外</span>{% endif %}</td>
+        <td><span class="grade-{{ c.health_grade }}">{{ c.health_grade }}</span> {{ c.health_score }}</td>
+        <td>{{ c.tag_count }}</td>
+        <td class="small">{% for m in c.ga4_measurement_ids %}<span class="badge b-role">{{ m }}</span>{% else %}—{% endfor %}</td>
+        <td>{% if c.alert_count %}<span class="alert-warn">{{ c.alert_count }}件</span>{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="small">割り当てなし</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Search Console ({{ ent.sc_sites|length }})</h2>
+  {% if ent.sc_sites %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>サイト</th><th>スコア</th><th>Click(28d)</th><th>Imp(28d)</th><th>CTR</th><th>アラート</th></tr></thead>
+    <tbody>
+    {% for s in ent.sc_sites|sort(attribute='health_score') %}
+      <tr class="{{ 'excluded-row' if s.ann_excluded }}">
+        <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a>{% if s.ann_excluded %} <span class="badge b-na">監視除外</span>{% endif %}</td>
+        <td><span class="grade-{{ s.health_grade }}">{{ s.health_grade }}</span> {{ s.health_score }}</td>
+        <td>{{ '{:,}'.format(s.clicks_28d) }}</td>
+        <td>{{ '{:,}'.format(s.impressions_28d) }}</td>
+        <td>{{ '%.2f' % (s.ctr_28d * 100) }}%</td>
+        <td>{% if s.alert_count %}<span class="alert-warn">{{ s.alert_count }}件</span>{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="small">割り当てなし</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>直近30日の変化（このクライアントのみ）</h2>
+  {% if events %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>検出日時</th><th>重要度</th><th>対象</th><th>内容</th></tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr>
+        <td class="small" style="white-space:nowrap">{{ (e.detected_at or '')[:16].replace('T',' ') }}</td>
+        <td>{% if e.severity == 'critical' %}<span class="badge b-ng">重大</span>{% elif e.severity == 'warn' %}<span class="badge" style="background:var(--g-warn-bg);color:var(--g-warn)">注意</span>{% else %}<span class="badge b-na">情報</span>{% endif %}</td>
+        <td class="small">{{ e.entity_name }}</td>
+        <td class="small">{{ e.message }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="small">直近30日間に検出された変化はありません。</p>{% endif %}
+</div>
+
+{# ==== 割り当て編集モーダル（独自・大型のためbaseのmodalは使わない） ==== #}
+<div class="modal-bd" id="assign-bd" onclick="if(event.target===this) closeAssign()">
+  <div class="modal" style="max-width:860px">
+    <div class="modal-h"><h3>🔗 割り当てを編集 — {{ client.name }}</h3><button class="close-x" onclick="closeAssign()">×</button></div>
+    <div class="modal-b">
+      <input type="search" id="as-q" placeholder="絞り込み（名前・ID・URL）" style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-bottom:10px;background:var(--g-card);color:var(--g-text)">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:12px">
+        <div>
+          <b>GA4プロパティ</b>
+          <div style="max-height:320px;overflow:auto;border:1px solid var(--g-border);border-radius:6px;padding:6px;margin-top:4px">
+            {% for p in all_props %}
+            <label class="as-item" data-search="{{ (p.display_name ~ ' ' ~ p.property_id)|lower }}" style="display:block;padding:3px 4px">
+              <input type="checkbox" class="as-prop" value="{{ p.property_id }}" {% if p.property_id|string in client.property_ids %}checked{% endif %}>
+              {{ p.display_name }} <span class="small">({{ p.property_id }})</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <b>GTMコンテナ</b>
+          <div style="max-height:320px;overflow:auto;border:1px solid var(--g-border);border-radius:6px;padding:6px;margin-top:4px">
+            {% for c in all_conts %}
+            <label class="as-item" data-search="{{ (c.name ~ ' ' ~ c.public_id)|lower }}" style="display:block;padding:3px 4px">
+              <input type="checkbox" class="as-cont" value="{{ c.container_id }}" {% if c.container_id|string in client.container_ids %}checked{% endif %}>
+              {{ c.name }} <span class="small">({{ c.public_id }})</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <b>SCサイト</b>
+          <div style="max-height:320px;overflow:auto;border:1px solid var(--g-border);border-radius:6px;padding:6px;margin-top:4px">
+            {% for s in all_sites %}
+            <label class="as-item" data-search="{{ (s.site_url ~ ' ' ~ s.domain)|lower }}" style="display:block;padding:3px 4px">
+              <input type="checkbox" class="as-site" value="{{ s.site_hash }}" {% if s.site_hash|string in client.site_hashes %}checked{% endif %}>
+              {{ s.site_url }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" onclick="closeAssign()">キャンセル</button>
+      <button class="btn primary" onclick="saveAssign()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CID = '{{ cid }}';
+function openAssignModal(){ document.getElementById('assign-bd').classList.add('show'); }
+function closeAssign(){ document.getElementById('assign-bd').classList.remove('show'); }
+
+document.getElementById('as-q').addEventListener('input', function(){
+  const s = this.value.toLowerCase().trim();
+  document.querySelectorAll('.as-item').forEach(el => {
+    el.style.display = (!s || el.dataset.search.includes(s)) ? '' : 'none';
+  });
+});
+
+async function saveAssign(){
+  const body = {
+    property_ids: [...document.querySelectorAll('.as-prop:checked')].map(x => x.value),
+    container_ids: [...document.querySelectorAll('.as-cont:checked')].map(x => x.value),
+    site_hashes: [...document.querySelectorAll('.as-site:checked')].map(x => x.value),
+  };
+  try {
+    const r = await fetch('/api/clients/' + CID, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json();
+    if(d.ok){ showToast('割り当てを保存しました'); setTimeout(() => location.reload(), 600); }
+    else { showToast('保存失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('保存失敗: ' + e.message, 'error'); }
+}
+
+async function renameClient(){
+  const name = prompt('クライアント名', {{ client.name|tojson }});
+  if(name === null) return;
+  const note = prompt('メモ（担当者・契約内容など）', {{ client.note|tojson }});
+  if(note === null) return;
+  try {
+    const r = await fetch('/api/clients/' + CID, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, note})});
+    const d = await r.json();
+    if(d.ok){ location.reload(); } else { showToast('保存失敗', 'error'); }
+  } catch(e){ showToast('保存失敗: ' + e.message, 'error'); }
+}
+
+async function deleteClient(){
+  const ok = await confirmModal('クライアント「{{ client.name }}」を削除します。割り当て情報も消えます（GA4等のデータ自体は消えません）。よろしいですか？', {danger:true, okLabel:'削除'});
+  if(!ok) return;
+  try {
+    const r = await fetch('/api/clients/' + CID, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({_delete:true})});
+    const d = await r.json();
+    if(d.ok){ location.href = '/clients'; } else { showToast('削除失敗', 'error'); }
+  } catch(e){ showToast('削除失敗: ' + e.message, 'error'); }
+}
+</script>
+{% endblock %}

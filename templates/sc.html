@@ -111,7 +111,16 @@
       data-excl="{{ 'yes' if s.ann_excluded else 'no' }}"
       class="{{ 'excluded-row' if s.ann_excluded }}"
       data-search="{{ (s.site_url ~ ' ' ~ s.domain ~ ' ' ~ s.permission_level)|lower }}">
-      <td class="excl-cell"><input type="checkbox" class="excl-check" {% if s.ann_excluded %}checked{% endif %} onchange="toggleExcluded(this, 'sc_sites', '{{ s.site_hash }}')" title="監視から除外" aria-label="監視から除外"></td>
+      <td class="excl-cell">
+        <select class="excl-select {{ 'off' if s.ann_excluded }}" onchange="setMonitoring(this, 'sc_sites', '{{ s.site_hash }}')" title="監視の状態（スヌーズ / 除外）" aria-label="監視の状態">
+          {% if s.ann_snooze_until %}<option value="_snoozed" selected>⏸ {{ s.ann_snooze_until[5:].replace('-','/') }}まで</option>{% endif %}
+          <option value="on" {% if not s.ann_excluded %}selected{% endif %}>🔔 監視中</option>
+          <option value="7">⏸ 7日停止</option>
+          <option value="30">⏸ 30日停止</option>
+          <option value="90">⏸ 90日停止</option>
+          <option value="off" {% if s.ann_excluded_permanent %}selected{% endif %}>🔕 除外</option>
+        </select>
+      </td>
       <td class="small">{{ s.auth_email }}</td>
       <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a></td>
       <td class="small">{% if s.site_type == 'DOMAIN' %}<span class="badge b-role">ドメイン</span>{% else %}<span class="badge b-role-edit">URL Pre</span>{% endif %}</td>
@@ -170,18 +179,26 @@ function applyFilter(){
 [q, ef, tf, gf, lf, exf].forEach(el => el.addEventListener('input', applyFilter));
 applyFilter();
 
-async function toggleExcluded(el, kind, key){
-  const newVal = el.checked;
+async function setMonitoring(el, kind, key){
+  const v = el.value;
+  if(v === '_snoozed') return;
+  let body = {kind, key};
+  if(v === 'on'){ body.excluded = false; body.snooze_days = 0; }
+  else if(v === 'off'){ body.excluded = true; }
+  else { body.snooze_days = parseInt(v, 10); }
   try {
-    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind, key, excluded:newVal})});
+    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if(!r.ok) throw new Error('save failed');
+    const excluded = (v !== 'on');
     const tr = el.closest('tr');
-    tr.dataset.excl = newVal ? 'yes' : 'no';
-    tr.classList.toggle('excluded-row', newVal);
-    showToast(newVal ? '🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）' : '🔔 監視対象に戻しました');
+    tr.dataset.excl = excluded ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', excluded);
+    el.classList.toggle('off', excluded);
+    if(v === 'on') showToast('🔔 監視対象に戻しました');
+    else if(v === 'off') showToast('🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）');
+    else showToast(`⏸ ${v}日間スヌーズしました（期限が来ると自動で監視再開）`);
     applyFilter();
   } catch(e){
-    el.checked = !newVal;
     showToast('保存失敗: ' + e.message, 'error');
   }
 }

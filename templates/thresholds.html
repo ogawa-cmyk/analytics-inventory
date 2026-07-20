@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}監視しきい値設定 — Analytics Inventory{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>監視しきい値設定</span></nav>
+{% endblock %}
+{% block body %}
+<h1 style="font-size:18px;margin:6px 0 14px">⚙ 監視しきい値の設定</h1>
+
+{% if demo_mode %}
+<div class="alert-banner">🧪 デモ環境のため、しきい値の変更は無効化されています。</div>
+{% endif %}
+
+<div class="card" style="max-width:760px">
+  <h2>アラート・変化検知のしきい値</h2>
+  <p class="small" style="margin-bottom:16px">
+    サイト規模や運用方針に合わせて調整できます。<b>ヘルススコア（100点満点の採点基準）は変わりません</b>
+    — 変わるのはアラート判定と変化ログの検出条件だけです。空欄のまま保存すると既定値に戻ります。
+  </p>
+
+  <div style="display:flex;flex-direction:column;gap:18px;font-size:13px">
+    <label>
+      <b>急減とみなす減少率（%）</b> <span class="small">既定: {{ defaults.plunge_pct }} / 範囲: {{ limits.plunge_pct[0] }}〜{{ limits.plunge_pct[1] }}</span><br>
+      <span class="small">セッション（GA4）・検索クリック（SC）が前回比でこの率を超えて減ると「注意」の変化として検出します。</span><br>
+      <input type="number" id="th-plunge-pct" value="{{ th.plunge_pct }}" min="{{ limits.plunge_pct[0] }}" max="{{ limits.plunge_pct[1] }}"
+             style="width:120px;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)"> %
+    </label>
+    <label>
+      <b>急減判定の最小母数</b> <span class="small">既定: {{ defaults.plunge_min_base }}</span><br>
+      <span class="small">前回値がこの数未満の場合は、数字のブレとみなして急減判定をしません。小規模サイトが多い場合は下げてください。</span><br>
+      <input type="number" id="th-plunge-min" value="{{ th.plunge_min_base }}" min="{{ limits.plunge_min_base[0] }}" max="{{ limits.plunge_min_base[1] }}"
+             style="width:120px;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+    </label>
+    <label>
+      <b>カスタムディメンション過多の警告（件）</b> <span class="small">既定: {{ defaults.cd_warn }}</span><br>
+      <span class="small">この件数を超えると「CD過多」の警告アラートを出します。</span><br>
+      <input type="number" id="th-cd-warn" value="{{ th.cd_warn }}" min="{{ limits.cd_warn[0] }}" max="{{ limits.cd_warn[1] }}"
+             style="width:120px;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)"> 件
+    </label>
+    <label>
+      <b>レガシーUA系タグ残存の警告（件）</b> <span class="small">既定: {{ defaults.ua_warn }}</span><br>
+      <span class="small">GTMコンテナ内のUA系タグがこの件数以上あると警告し、ホームの要対応にも表示します。</span><br>
+      <input type="number" id="th-ua-warn" value="{{ th.ua_warn }}" min="{{ limits.ua_warn[0] }}" max="{{ limits.ua_warn[1] }}"
+             style="width:120px;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)"> 件以上
+    </label>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:20px;align-items:center">
+    <button class="btn primary" onclick="saveThresholds()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>💾 保存</button>
+    <button class="btn" onclick="resetThresholds()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>既定値に戻す</button>
+    <span class="small">変更は次のページ表示・次回スキャンから反映されます。</span>
+  </div>
+</div>
+
+<script>
+async function saveThresholds(){
+  const body = {
+    plunge_pct: document.getElementById('th-plunge-pct').value,
+    plunge_min_base: document.getElementById('th-plunge-min').value,
+    cd_warn: document.getElementById('th-cd-warn').value,
+    ua_warn: document.getElementById('th-ua-warn').value,
+  };
+  try {
+    const r = await fetch('/api/thresholds', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json();
+    if(d.ok){
+      showToast('しきい値を保存しました');
+      const t = d.thresholds;
+      document.getElementById('th-plunge-pct').value = t.plunge_pct;
+      document.getElementById('th-plunge-min').value = t.plunge_min_base;
+      document.getElementById('th-cd-warn').value = t.cd_warn;
+      document.getElementById('th-ua-warn').value = t.ua_warn;
+    } else { showToast('保存失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('保存失敗: ' + e.message, 'error'); }
+}
+async function resetThresholds(){
+  const ok = await confirmModal('すべてのしきい値を既定値に戻します。よろしいですか？');
+  if(!ok) return;
+  document.getElementById('th-plunge-pct').value = {{ defaults.plunge_pct }};
+  document.getElementById('th-plunge-min').value = {{ defaults.plunge_min_base }};
+  document.getElementById('th-cd-warn').value = {{ defaults.cd_warn }};
+  document.getElementById('th-ua-warn').value = {{ defaults.ua_warn }};
+  saveThresholds();
+}
+</script>
+{% endblock %}

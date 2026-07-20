@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}クライアント一覧 — Analytics Inventory{% endblock %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><span>クライアント</span></nav>
+{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 14px;flex-wrap:wrap">
+  <h1 style="font-size:18px;margin:0">🏢 クライアント別ダッシュボード</h1>
+  <button class="btn primary" onclick="createClient()">＋ クライアントを追加</button>
+</div>
+
+{% if clients %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+  {% for c in clients %}
+  <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <a class="prop" href="/clients/{{ c.client_id }}" style="font-size:16px;font-weight:600;flex:1">{{ c.name }}</a>
+      {% if c.summary.total_bad > 0 %}
+        <span class="badge b-ng">要対応 {{ c.summary.total_bad }}</span>
+      {% elif c.summary.total_entities > 0 %}
+        <span class="badge b-ok">良好</span>
+      {% endif %}
+    </div>
+    {% if c.note %}<div class="small">{{ c.note }}</div>{% endif %}
+    <table style="font-size:12px">
+      <tr><td style="padding:3px 6px">GA4</td><td style="padding:3px 6px;text-align:right">{{ c.summary.ga4.n }}件</td><td style="padding:3px 6px;text-align:right">平均{{ c.summary.ga4.avg }}点</td><td style="padding:3px 6px;text-align:right">{% if c.summary.ga4.bad %}<span class="alert-error">要対応{{ c.summary.ga4.bad }}</span>{% else %}—{% endif %}</td></tr>
+      <tr><td style="padding:3px 6px">GTM</td><td style="padding:3px 6px;text-align:right">{{ c.summary.gtm.n }}件</td><td style="padding:3px 6px;text-align:right">平均{{ c.summary.gtm.avg }}点</td><td style="padding:3px 6px;text-align:right">{% if c.summary.gtm.bad %}<span class="alert-error">要対応{{ c.summary.gtm.bad }}</span>{% else %}—{% endif %}</td></tr>
+      <tr><td style="padding:3px 6px">SC</td><td style="padding:3px 6px;text-align:right">{{ c.summary.sc.n }}件</td><td style="padding:3px 6px;text-align:right">平均{{ c.summary.sc.avg }}点</td><td style="padding:3px 6px;text-align:right">{% if c.summary.sc.bad %}<span class="alert-error">要対応{{ c.summary.sc.bad }}</span>{% else %}—{% endif %}</td></tr>
+    </table>
+    <div style="display:flex;gap:8px;margin-top:auto">
+      <a class="btn" href="/clients/{{ c.client_id }}">開く</a>
+      <a class="btn" href="/clients/{{ c.client_id }}/report.pdf">📄 PDFレポート</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  <span class="icon">🏢</span>
+  クライアントがまだありません
+  <div class="hint">「＋ クライアントを追加」で作成し、GA4プロパティ・GTMコンテナ・SCサイトを割り当てると、クライアント単位のダッシュボードとPDFレポートが使えます。</div>
+</div>
+{% endif %}
+
+<p class="small" style="margin-top:16px">💡 クライアントに割り当てたプロパティ等の紐付けは <code>data/clients.json</code> に保存されます。エンティティの割り当ては各クライアントの詳細画面から行います。</p>
+
+<script>
+async function createClient(){
+  const name = prompt('クライアント名を入力してください（例: A社）');
+  if(!name) return;
+  try {
+    const r = await fetch('/api/clients', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})});
+    const d = await r.json();
+    if(d.ok){ location.href = '/clients/' + d.client.client_id; }
+    else { showToast('作成失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('作成失敗: ' + e.message, 'error'); }
+}
+</script>
+{% endblock %}

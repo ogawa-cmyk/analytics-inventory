@@ -15,9 +15,11 @@ Stored in data/annotations.json. Schema:
 
 excluded=True の項目は「監視から除外」: アラート集計・今日の要対応・変化ログ・
 週次メール・自動診断の対象外になる（一覧・詳細ページには表示され続ける）。
+snooze_until（"YYYY-MM-DD"）が未来日の間は期限付きで同じ扱い（スヌーズ）。
 """
 from __future__ import annotations
 import json
+from datetime import date
 from pathlib import Path
 from threading import Lock
 
@@ -27,7 +29,22 @@ ANNOTATIONS_PATH = DATA_DIR / "annotations.json"
 _lock = Lock()
 
 KINDS = ("properties", "containers", "sc_sites")
-_DEFAULT = {"tags": [], "note": "", "favorite": False, "excluded": False}
+_DEFAULT = {"tags": [], "note": "", "favorite": False, "excluded": False, "snooze_until": None}
+
+
+def _snooze_active(ann: dict) -> bool:
+    su = ann.get("snooze_until")
+    if not su:
+        return False
+    try:
+        return date.today().isoformat() <= str(su)
+    except Exception:
+        return False
+
+
+def is_effectively_excluded(ann: dict) -> bool:
+    """恒久除外 or スヌーズ期間中なら True。"""
+    return bool(ann.get("excluded")) or _snooze_active(ann)
 
 
 def _load() -> dict:
@@ -75,14 +92,16 @@ def set_annotation(kind: str, key: str, **kwargs) -> dict:
             cur["favorite"] = bool(kwargs["favorite"])
         if "excluded" in kwargs:
             cur["excluded"] = bool(kwargs["excluded"])
+        if "snooze_until" in kwargs:
+            cur["snooze_until"] = kwargs["snooze_until"] or None
         _save(d)
         return cur
 
 
 def excluded_ids(kind: str) -> set[str]:
-    """監視除外中のIDセット。kind: 'properties' | 'containers' | 'sc_sites'."""
+    """監視除外中（恒久＋スヌーズ期間中）のIDセット。"""
     data = all_data().get(kind, {})
-    return {k for k, v in data.items() if v.get("excluded")}
+    return {k for k, v in data.items() if is_effectively_excluded(v)}
 
 
 def _enrich(items: list[dict], kind: str, id_key: str) -> list[dict]:
@@ -92,7 +111,10 @@ def _enrich(items: list[dict], kind: str, id_key: str) -> list[dict]:
         x["ann_tags"] = ann.get("tags", [])
         x["ann_note"] = ann.get("note", "")
         x["ann_favorite"] = ann.get("favorite", False)
-        x["ann_excluded"] = ann.get("excluded", False)
+        # ann_excluded は「実効値」（恒久 or スヌーズ中）。下流はこれだけ見ればよい
+        x["ann_excluded"] = is_effectively_excluded(ann)
+        x["ann_excluded_permanent"] = bool(ann.get("excluded"))
+        x["ann_snooze_until"] = ann.get("snooze_until") if _snooze_active(ann) else None
     return items
 
 

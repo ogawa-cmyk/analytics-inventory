@@ -87,7 +87,16 @@
       data-search="{{ (p.display_name ~ ' ' ~ p.property_id ~ ' ' ~ p.account_display_name ~ ' ' ~ (p.ann_tags or [])|join(' ') ~ ' ' ~ (p.ann_note or ''))|lower }}">
       <td><input type="checkbox" class="row-check" value="{{ p.property_id }}" onchange="updateSelCount()"></td>
       <td><button type="button" class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')" aria-label="{{ 'お気に入り解除' if p.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if p.ann_favorite else 'false' }}">★</button></td>
-      <td class="excl-cell"><input type="checkbox" class="excl-check" {% if p.ann_excluded %}checked{% endif %} onchange="toggleExcluded(this, 'properties', '{{ p.property_id }}')" title="監視から除外" aria-label="監視から除外"></td>
+      <td class="excl-cell">
+        <select class="excl-select {{ 'off' if p.ann_excluded }}" onchange="setMonitoring(this, 'properties', '{{ p.property_id }}')" title="監視の状態（スヌーズ / 除外）" aria-label="監視の状態">
+          {% if p.ann_snooze_until %}<option value="_snoozed" selected>⏸ {{ p.ann_snooze_until[5:].replace('-','/') }}まで</option>{% endif %}
+          <option value="on" {% if not p.ann_excluded %}selected{% endif %}>🔔 監視中</option>
+          <option value="7">⏸ 7日停止</option>
+          <option value="30">⏸ 30日停止</option>
+          <option value="90">⏸ 90日停止</option>
+          <option value="off" {% if p.ann_excluded_permanent %}selected{% endif %}>🔕 除外</option>
+        </select>
+      </td>
       <td class="small">{{ p.auth_email }}</td>
       <td>{{ p.account_display_name }}</td>
       <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a></td>
@@ -267,22 +276,26 @@ window.apply = function(){ _origApply(); renderActiveChips(); };
 [q,tf,ef,em,gf,tagf,ff,exf].forEach(el => el && el.addEventListener('input', renderActiveChips));
 renderActiveChips();
 
-async function toggleExcluded(el, kind, key){
-  const newVal = el.checked;
+async function setMonitoring(el, kind, key){
+  const v = el.value;
+  if(v === '_snoozed') return;
+  let body = {kind, key};
+  if(v === 'on'){ body.excluded = false; body.snooze_days = 0; }
+  else if(v === 'off'){ body.excluded = true; }
+  else { body.snooze_days = parseInt(v, 10); }
   try {
-    const r = await fetch('/api/annotate', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({kind, key, excluded:newVal})
-    });
+    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if(!r.ok) throw new Error('save failed');
+    const excluded = (v !== 'on');
     const tr = el.closest('tr');
-    tr.dataset.excl = newVal ? 'yes' : 'no';
-    tr.classList.toggle('excluded-row', newVal);
-    showToast(newVal ? '🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）' : '🔔 監視対象に戻しました');
+    tr.dataset.excl = excluded ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', excluded);
+    el.classList.toggle('off', excluded);
+    if(v === 'on') showToast('🔔 監視対象に戻しました');
+    else if(v === 'off') showToast('🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）');
+    else showToast(`⏸ ${v}日間スヌーズしました（期限が来ると自動で監視再開）`);
     apply();
   } catch(e){
-    el.checked = !newVal;
     showToast('保存失敗: ' + e.message, 'error');
   }
 }
