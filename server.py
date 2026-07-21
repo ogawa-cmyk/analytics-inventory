@@ -1048,10 +1048,31 @@ def api_notify_settings():
 @app.route("/api/notify/test", methods=["POST"])
 def api_notify_test():
     if DEMO_MODE:
-        return jsonify({"ok": False, "error": "デモ環境ではメール送信は無効です"}), 403
-    result = notifications.send_weekly(_load_inventory, force=True, test=True)
+        return jsonify({"ok": False, "error": "デモ環境では通知の送信は無効です"}), 403
+    data = request.get_json(silent=True) or {}
+    channel = data.get("channel")  # "email" | "slack" | "webhook" | None(=全チャネル)
+    s = notifications.load_settings()
+    summary = notifications.build_summary(_load_inventory())
+    base_url = s.get("base_url") or ""
+
+    if channel == "slack":
+        result = notifications.send_slack(summary, s, base_url=base_url, test=True)
+    elif channel == "webhook":
+        result = notifications.send_webhook(summary, s, base_url=base_url, test=True)
+    elif channel == "email":
+        html = notifications.render_html(summary, base_url=base_url)
+        result = notifications.send_email("[テスト] 📊 週次サマリー", html, settings=s)
+    else:
+        result = notifications.send_weekly(_load_inventory, force=True, test=True)
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
+
+
+@app.route("/api/notify/slack_preview")
+def api_notify_slack_preview():
+    summary = notifications.build_summary(_load_inventory())
+    s = notifications.load_settings()
+    return jsonify(notifications.build_slack_blocks(summary, base_url=s.get("base_url") or "", test=True))
 
 
 @app.route("/api/notify/preview")

@@ -63,7 +63,7 @@
     <li><a href="#flow-daily">毎日のチェック（5分）— ホームの読み方</a></li>
     <li><a href="#flow-alert">要対応アラートの読み解きと対応フロー</a></li>
     <li><a href="#flow-weekly">週次の改善フロー（30分）</a></li>
-    <li><a href="#watch">変化ログと週次メール通知（自動監視）</a></li>
+    <li><a href="#watch">変化ログと週次通知（メール/Slack/Webhook）</a></li>
     <li><a href="#flow-ai">AI分析の活用パターン（個別・一括・自動）</a></li>
     <li><a href="#client">クライアント別の管理</a></li>
     <li><a href="#improve-ga4">GA4の計測精度を上げるチェックリスト</a></li>
@@ -259,7 +259,7 @@
 </div>
 
 <div class="card help-section" id="watch">
-  <h2>変化ログと週次メール通知（自動監視）</h2>
+  <h2>変化ログと週次通知（メール/Slack/Webhook・自動監視）</h2>
   <p style="font-size:13px">「見に行かなくても異常に気づける」ための2つの自動監視機能です。データ収集（⟳ 更新）のたびに前回スナップショットと比較し、変化を自動記録します。</p>
 
   <h3>🔔 変化ログ（ナビの「変化ログ」）</h3>
@@ -272,13 +272,14 @@
   </ul>
   <div class="tip"><b>💡 活用のコツ:</b> クライアントから「数値がおかしい」と連絡が来たら、まず変化ログを確認。「いつ・何が変わったか」が記録されているため、GTMの公開やキーイベント変更が原因かを数秒で切り分けられます。</div>
 
-  <h3>✉ 週次メール通知（分析メニュー →「週次メール通知設定」）</h3>
-  <p style="font-size:13px">毎週決まった曜日・時刻に、<b>KPIサマリー ＋ 直近7日間の変化 ＋ 要対応の一覧（グレードD/F・エラー）</b>をメールで受け取れます。</p>
+  <h3>✉ 週次通知（分析メニュー →「週次通知設定」）</h3>
+  <p style="font-size:13px">毎週決まった曜日・時刻に、<b>KPIサマリー ＋ 直近7日間の変化 ＋ 要対応の一覧（グレードD/F・エラー）</b>を受け取れます。通知先は<b>メール・Slack・汎用Webhookの3種類</b>から選べ、併用もできます。</p>
   <ul class="check-list">
-    <li>送信先（複数可）・曜日・時刻を設定し、SMTPサーバー情報（Gmailならアプリパスワード）を入力して保存。</li>
-    <li>「👁 メールをプレビュー」で内容を事前確認、「📨 テスト送信」で疎通チェックができます。</li>
-    <li>SMTPパスワードはローカルの data/ 配下（Git管理外）に保存。環境変数 <code>SMTP_PASSWORD</code> での指定も可能です。</li>
-    <li><b>サーバーを常時起動しない場合（Windows）:</b> <code>register_weekly_task.bat</code> を一度実行すると、タスクスケジューラ経由で毎日 <code>run_weekly_mail.bat</code> が起動し、送信曜日に一致した日だけメールが送られます（結果は <code>weekly_mail.log</code> に記録）。</li>
+    <li><b>メール</b>: 送信先（複数可）・曜日・時刻を設定し、SMTPサーバー情報（Gmailならアプリパスワード）を入力して保存。「👁 メールをプレビュー」で事前確認、「📨 テスト送信」で疎通チェック。</li>
+    <li><b>Slack</b>: Slackアプリの「Incoming Webhooks」で取得したWebhook URLを貼るだけ。重要度（🔴重大 / 🟠注意）付きで変化と要対応が投稿されます。チームで共有するならこれが手軽です。</li>
+    <li><b>汎用Webhook</b>: サマリーを構造化JSON（<code>stats</code>・<code>changes</code>・<code>requires_attention</code>）でPOST。Zapier / Make / Discord / 自社システムなどに接続できます。</li>
+    <li>SMTPパスワードやWebhook URLはローカルの data/ 配下（Git管理外）に保存。環境変数（<code>SMTP_PASSWORD</code> / <code>SLACK_WEBHOOK_URL</code> / <code>WEBHOOK_URL</code>）での指定も可能です。</li>
+    <li><b>サーバーを常時起動しない場合（Windows）:</b> <code>register_weekly_task.bat</code> を一度実行すると、タスクスケジューラ経由で毎日 <code>run_weekly_mail.bat</code> が起動し、送信曜日に一致した日だけ有効な全チャネルへ送られます（結果は <code>weekly_mail.log</code> に記録）。</li>
   </ul>
 </div>
 

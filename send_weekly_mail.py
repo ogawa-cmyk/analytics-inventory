@@ -34,7 +34,7 @@ def run(force: bool = False, test: bool = False) -> int:
     s = notifications.load_settings()
 
     if not force and not test:
-        if not s.get("enabled"):
+        if not notifications._any_channel_enabled(s):
             _log("SKIP: 通知が無効です（/settings/notifications で有効化してください）")
             return 0
         now = datetime.now()
@@ -48,9 +48,12 @@ def run(force: bool = False, test: bool = False) -> int:
             return 0
 
     _log("週次サマリーを構築して送信します...")
-    result = notifications.send_weekly(_loader, force=True, test=test)
+    result = notifications.send_weekly(_loader, force=force or (not test), test=test)
+    chans = result.get("channels") or {}
+    for name, r in chans.items():
+        _log(f"  {name}: {'OK' if r.get('ok') else 'NG — ' + str(r.get('error'))}")
     if result.get("ok"):
-        _log(f"OK: 送信しました → {', '.join(result.get('to') or [])}")
+        _log("OK: いずれかのチャネルへ送信しました")
         return 0
     _log(f"ERROR: 送信失敗 — {result.get('error')}")
     return 1

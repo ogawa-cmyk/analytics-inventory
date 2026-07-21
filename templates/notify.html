@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}週次メール通知設定 — Analytics Inventory{% endblock %}
+{% block title %}週次通知設定（メール/Slack/Webhook） — Analytics Inventory{% endblock %}
 {% block breadcrumbs %}
 <nav class="breadcrumbs"><a href="/">ホーム</a><span class="sep">/</span><a href="/changes">変化ログ</a><span class="sep">/</span><span>通知設定</span></nav>
 {% endblock %}
 {% block body %}
-<h1 style="font-size:18px;margin:6px 0 14px">✉ 週次ヘルスサマリー メール通知設定</h1>
+<h1 style="font-size:18px;margin:6px 0 14px">✉ 週次ヘルスサマリー 通知設定（メール / Slack / Webhook）</h1>
 
 {% if demo_mode %}
-<div class="alert-banner">🧪 デモ環境のため、設定の保存とメール送信は無効化されています。「メールをプレビュー」で内容イメージは確認できます。</div>
+<div class="alert-banner">🧪 デモ環境のため、設定の保存と通知の送信は無効化されています。「メールをプレビュー」で内容イメージは確認できます。</div>
 {% endif %}
 
 <div class="grid-2">
@@ -92,18 +92,60 @@
   </div>
 </div>
 
+<div class="grid-2">
+  <div class="card">
+    <h2>💬 Slack 通知</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="nf-slack-enabled" {% if settings.slack_enabled %}checked{% endif %}>
+        <b>Slackへ週次サマリーを送信する</b>
+      </label>
+      <label>Slack Incoming Webhook URL {% if settings.slack_webhook_set %}<span class="badge b-ok">設定済み</span>{% else %}<span class="badge b-na">未設定</span>{% endif %}
+        <input type="password" id="nf-slack-url" value="" autocomplete="new-password"
+               placeholder="{% if settings.slack_webhook_set %}変更する場合のみ入力{% else %}https://hooks.slack.com/services/...{% endif %}"
+               style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+      </label>
+      <button class="btn" onclick="testChannel('slack', this)" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>💬 Slackにテスト送信</button>
+      <p class="small">
+        💡 Slackアプリの「Incoming Webhooks」を有効化し、投稿先チャンネルのWebhook URLを取得して貼り付けます。<br>
+        💡 URLは環境変数 <code>SLACK_WEBHOOK_URL</code> でも指定できます。設定ファイルは data/ 配下でGit管理外です。
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔗 汎用Webhook 通知</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="nf-webhook-enabled" {% if settings.webhook_enabled %}checked{% endif %}>
+        <b>Webhookへ週次サマリーをPOSTする</b>
+      </label>
+      <label>Webhook URL {% if settings.webhook_set %}<span class="badge b-ok">設定済み</span>{% else %}<span class="badge b-na">未設定</span>{% endif %}
+        <input type="password" id="nf-webhook-url" value="" autocomplete="new-password"
+               placeholder="{% if settings.webhook_set %}変更する場合のみ入力{% else %}https://example.com/webhook{% endif %}"
+               style="width:100%;padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;margin-top:4px;background:var(--g-card);color:var(--g-text)">
+      </label>
+      <button class="btn" onclick="testChannel('webhook', this)" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>🔗 Webhookにテスト送信</button>
+      <p class="small">
+        Slack以外の連携用。サマリーを構造化JSON（<code>stats</code>・<code>changes</code>・<code>requires_attention</code>）でPOSTします。<br>
+        Zapier / Make / Discord（<code>/slack</code>付き）/ 自社の受け口などに接続できます。環境変数 <code>WEBHOOK_URL</code> でも指定可。
+      </p>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <button class="btn primary" onclick="saveNotify()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>💾 設定を保存</button>
     <button class="btn" onclick="window.open('/api/notify/preview','_blank')">👁 メールをプレビュー</button>
-    <button class="btn" id="test-btn" onclick="sendTest()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>📨 テスト送信</button>
+    <button class="btn" id="test-btn" onclick="sendTest()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>📨 メールをテスト送信</button>
     <span class="small" id="nf-status">
       {% if settings.last_sent_at %}最終送信: {{ settings.last_sent_at[:16].replace('T',' ') }} (UTC){% else %}まだ送信されていません{% endif %}
     </span>
   </div>
   <p class="small" style="margin-top:10px">
-    メール内容: KPIサマリー ＋ 直近7日間の変化（<a class="prop" href="/changes">変化ログ</a>）＋ 要対応のGA4プロパティ / GTMコンテナ / Search Consoleサイト（グレードD・F またはエラーアラートあり）。<br>
-    送信条件: 有効化済み ＋ 指定曜日の指定時刻以降 ＋ その週にまだ未送信の場合、サーバーが自動送信します（サーバー起動中のみ）。
+    通知内容: KPIサマリー ＋ 直近7日間の変化（<a class="prop" href="/changes">変化ログ</a>）＋ 要対応のGA4プロパティ / GTMコンテナ / Search Consoleサイト（グレードD・F またはエラーアラートあり）。メール・Slack・Webhookは<b>併用できます</b>（有効にしたチャネルすべてに同じ内容が届きます）。<br>
+    送信条件: いずれかのチャネルが有効 ＋ 指定曜日の指定時刻以降 ＋ その週にまだ未送信の場合、サーバーが自動送信します（サーバー起動中のみ）。
   </p>
   <div class="alert-banner" style="margin-top:10px">
     <b>💡 サーバーを常時起動しない運用（Windows）:</b>
@@ -127,6 +169,10 @@ function collectSettings(){
     smtp_user: document.getElementById('nf-smtp-user').value.trim(),
     smtp_password: document.getElementById('nf-smtp-password').value,
     from_addr: document.getElementById('nf-from').value.trim(),
+    slack_enabled: document.getElementById('nf-slack-enabled').checked,
+    slack_webhook_url: document.getElementById('nf-slack-url').value.trim(),
+    webhook_enabled: document.getElementById('nf-webhook-enabled').checked,
+    webhook_url: document.getElementById('nf-webhook-url').value.trim(),
   };
 }
 async function saveNotify(){
@@ -136,9 +182,14 @@ async function saveNotify(){
       body: JSON.stringify(collectSettings()),
     });
     const d = await r.json();
-    if(d.ok){ showToast('設定を保存しました'); document.getElementById('nf-smtp-password').value = ''; }
+    if(d.ok){
+      showToast('設定を保存しました');
+      document.getElementById('nf-smtp-password').value = '';
+      document.getElementById('nf-slack-url').value = '';
+      document.getElementById('nf-webhook-url').value = '';
+    }
     else { showToast('保存失敗: ' + (d.error || ''), 'error'); }
-  } catch(e){ showToast('保存失敗: ' + e.message, 'error'); }
+  } catch(e){ showToast('保存失敗: ' + (d.error || e.message), 'error'); }
 }
 async function sendTest(){
   const btn = document.getElementById('test-btn');
@@ -147,9 +198,23 @@ async function sendTest(){
   btn.disabled = true;
   showToast('送信中…');
   try {
-    const r = await fetch('/api/notify/test', {method: 'POST'});
+    const r = await fetch('/api/notify/test', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({channel: 'email'})});
     const d = await r.json();
     if(d.ok){ showToast('テストメールを送信しました → ' + (d.to || []).join(', ')); }
+    else { showToast('送信失敗: ' + (d.error || ''), 'error'); }
+  } catch(e){ showToast('送信失敗: ' + e.message, 'error'); }
+  btn.disabled = false;
+}
+async function testChannel(channel, btn){
+  const label = channel === 'slack' ? 'Slack' : 'Webhook';
+  const ok = await confirmModal(`保存済みの設定で${label}にテスト送信します。先に「💾 設定を保存」を押しておいてください。続行しますか？`);
+  if(!ok) return;
+  btn.disabled = true;
+  showToast('送信中…');
+  try {
+    const r = await fetch('/api/notify/test', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({channel})});
+    const d = await r.json();
+    if(d.ok){ showToast(`${label}にテスト送信しました`); }
     else { showToast('送信失敗: ' + (d.error || ''), 'error'); }
   } catch(e){ showToast('送信失敗: ' + e.message, 'error'); }
   btn.disabled = false;

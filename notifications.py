@@ -35,9 +35,17 @@ DEFAULT_SETTINGS = {
     "from_addr": "",
     "from_name": "Analytics Inventory",
     "base_url": "http://127.0.0.1:8788",
+    # --- Slack / Webhook 通知（メールと併用可・どれか1つでも可） ---
+    "slack_enabled": False,
+    "slack_webhook_url": "",     # Slack Incoming Webhook URL
+    "webhook_enabled": False,
+    "webhook_url": "",           # 任意のWebhook（JSON POST）
     "last_sent_week": None,  # ISO週キー "2026-W27"
     "last_sent_at": None,
 }
+
+# Webhook系URLも環境変数で上書きできる（設定ファイルに秘密を置きたくない場合）
+_ENV_KEYS = {"slack_webhook_url": "SLACK_WEBHOOK_URL", "webhook_url": "WEBHOOK_URL"}
 
 _lock = threading.Lock()
 _scheduler_started = False
@@ -62,12 +70,15 @@ def save_settings(new: dict) -> dict:
     with _lock:
         cur = load_settings()
         for k in ("enabled", "to", "weekday", "hour", "smtp_host", "smtp_port",
-                  "smtp_security", "smtp_user", "from_addr", "from_name", "base_url"):
+                  "smtp_security", "smtp_user", "from_addr", "from_name", "base_url",
+                  "slack_enabled", "webhook_enabled"):
             if k in new:
                 cur[k] = new[k]
-        pw = new.get("smtp_password")
-        if pw:  # 空欄は「変更なし」
-            cur["smtp_password"] = pw
+        # 秘匿値（空欄なら既存維持）
+        for k in ("smtp_password", "slack_webhook_url", "webhook_url"):
+            v = new.get(k)
+            if v:
+                cur[k] = v.strip() if isinstance(v, str) else v
         _write(cur)
         return cur
 
@@ -79,11 +90,22 @@ def _write(s: dict) -> None:
 
 
 def public_settings() -> dict:
-    """パスワードを伏せた設定（UI 表示用）。"""
+    """パスワード・Webhook URL を伏せた設定（UI 表示用）。"""
     s = load_settings()
+    raw = load_settings()
     s["smtp_password"] = ""
-    s["smtp_password_set"] = bool(load_settings().get("smtp_password") or os.environ.get("SMTP_PASSWORD"))
+    s["smtp_password_set"] = bool(raw.get("smtp_password") or os.environ.get("SMTP_PASSWORD"))
+    # Webhook URL は秘匿。設定済みかどうかだけ返す
+    s["slack_webhook_url"] = ""
+    s["slack_webhook_set"] = bool(raw.get("slack_webhook_url") or os.environ.get("SLACK_WEBHOOK_URL"))
+    s["webhook_url"] = ""
+    s["webhook_set"] = bool(raw.get("webhook_url") or os.environ.get("WEBHOOK_URL"))
     return s
+
+
+def _resolve_url(s: dict, key: str) -> str:
+    """環境変数優先で Webhook URL を解決。"""
+    return (os.environ.get(_ENV_KEYS[key]) or s.get(key) or "").strip()
 
 
 # ============================================================
@@ -281,25 +303,165 @@ def send_email(subject: str, html: str, settings: dict | None = None) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
 
 
+# ============================================================
+#  Slack / Webhook 送信
+# ============================================================
+
+def build_slack_blocks(summary: dict, base_url: str = "", test: bool = False) -> dict:
+    """Slack Incoming Webhook 用の Block Kit ペイロード。"""
+    st = summary["stats"]
+    cc = summary.get("change_counts") or {}
+    n_bad = st["n_ga4_bad"] + st["n_gtm_bad"] + st["n_sc_bad"]
+    today = datetime.now().strftime("%Y-%m-%d")
+    header = f"{'[テスト] ' if test else ''}📊 週次サマリー {today}"
+
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": header, "emoji": True}},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*GA4*\n{st['n_props']}件 / 平均{st['avg_prop']}点 / 要対応{st['n_ga4_bad']}"},
+            {"type": "mrkdwn", "text": f"*GTM*\n{st['n_conts']}件 / 平均{st['avg_cont']}点 / 要対応{st['n_gtm_bad']}"},
+            {"type": "mrkdwn", "text": f"*Search Console*\n{st['n_sc']}件 / 平均{st['avg_sc']}点 / 要対応{st['n_sc_bad']}"},
+            {"type": "mrkdwn", "text": f"*変化(7日)*\n計{cc.get('total', 0)} / 重大{cc.get('critical', 0)} / 注意{cc.get('warn', 0)}"},
+        ]},
+    ]
+
+    # 直近の重大・注意の変化を最大8件
+    sev_emoji = {"critical": "🔴", "warn": "🟠", "info": "⚪"}
+    notable = [e for e in (summary.get("changes") or []) if e.get("severity") in ("critical", "warn")][:8]
+    if notable:
+        lines = [f"{sev_emoji.get(e.get('severity'), '⚪')} *{_slack_esc(e.get('entity_name'))}* — {_slack_esc(e.get('message'))}"
+                 for e in notable]
+        blocks.append({"type": "divider"})
+        blocks.append({"type": "section",
+                       "text": {"type": "mrkdwn", "text": "*🔔 直近7日間の主な変化*\n" + "\n".join(lines)}})
+
+    # 要対応トップ（各カテゴリ最大5件）
+    def _bad_lines(rows, label):
+        if not rows:
+            return None
+        items = [f"• {_slack_esc(r['name'])}（{r['grade']}・{r['score']}点）" for r in rows[:5]]
+        extra = f"\n…他 {len(rows) - 5}件" if len(rows) > 5 else ""
+        return f"*⚠ 要対応 {label}*\n" + "\n".join(items) + extra
+
+    for rows, label in [(summary.get("ga4_bad"), "GA4"), (summary.get("gtm_bad"), "GTM"),
+                        (summary.get("sc_bad"), "Search Console")]:
+        txt = _bad_lines(rows, label)
+        if txt:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": txt}})
+
+    if n_bad == 0 and cc.get("total", 0) == 0:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "✅ 要対応・変化ともにありません。良好です。"}})
+
+    if base_url:
+        blocks.append({"type": "actions", "elements": [
+            {"type": "button", "text": {"type": "plain_text", "text": "ダッシュボードを開く", "emoji": True},
+             "url": base_url}]})
+
+    return {"blocks": blocks}
+
+
+def _slack_esc(s) -> str:
+    return str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def send_slack(summary: dict, settings: dict, base_url: str = "", test: bool = False) -> dict:
+    url = _resolve_url(settings, "slack_webhook_url")
+    if not url:
+        return {"ok": False, "error": "Slack Webhook URLが未設定です"}
+    import requests
+    payload = build_slack_blocks(summary, base_url=base_url, test=test)
+    try:
+        r = requests.post(url, json=payload, timeout=15)
+        if r.status_code == 200:
+            return {"ok": True}
+        return {"ok": False, "error": f"Slack応答 {r.status_code}: {r.text[:120]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:150]}"}
+
+
+def send_webhook(summary: dict, settings: dict, base_url: str = "", test: bool = False) -> dict:
+    """汎用Webhook: サマリーを構造化JSONでPOST（Slack以外の連携用）。"""
+    url = _resolve_url(settings, "webhook_url")
+    if not url:
+        return {"ok": False, "error": "Webhook URLが未設定です"}
+    import requests
+    payload = {
+        "type": "weekly_summary",
+        "test": test,
+        "generated_at": summary.get("generated_at"),
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "dashboard_url": base_url or None,
+        "stats": summary.get("stats"),
+        "change_counts": summary.get("change_counts"),
+        "changes": summary.get("changes"),
+        "requires_attention": {
+            "ga4": summary.get("ga4_bad"),
+            "gtm": summary.get("gtm_bad"),
+            "sc": summary.get("sc_bad"),
+        },
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=15)
+        if 200 <= r.status_code < 300:
+            return {"ok": True, "status": r.status_code}
+        return {"ok": False, "error": f"Webhook応答 {r.status_code}: {r.text[:120]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:150]}"}
+
+
+# ============================================================
+#  週次送信（メール・Slack・Webhook を統合）
+# ============================================================
+
 def send_weekly(loader, force: bool = False, test: bool = False) -> dict:
-    """週次サマリーを構築して送信。loader() は enrich 済みインベントリを返す関数。"""
+    """週次サマリーを有効な全チャネル（メール/Slack/Webhook）へ送信。
+
+    loader() は enrich 済みインベントリを返す関数。
+    force=True で enabled を無視して各チャネルを送る（テスト・CLI用）。
+    戻り値: {ok, channels: {email/slack/webhook: {...}}, any_sent}
+    """
     s = load_settings()
-    if not force and not s.get("enabled"):
-        return {"ok": False, "error": "通知が無効です"}
+    base_url = s.get("base_url") or ""
     inv = loader()
     summary = build_summary(inv)
-    html = render_html(summary, base_url=s.get("base_url") or "")
-    today = datetime.now().strftime("%Y-%m-%d")
-    prefix = "[テスト] " if test else ""
-    n_bad = summary["stats"]["n_ga4_bad"] + summary["stats"]["n_gtm_bad"] + summary["stats"]["n_sc_bad"]
-    subject = f"{prefix}📊 週次サマリー {today} — 要対応 {n_bad}件 / 変化 {summary['change_counts']['total']}件"
-    result = send_email(subject, html, settings=s)
-    if result.get("ok") and not test:
+    channels: dict = {}
+
+    # メール
+    if force or (s.get("enabled") and (s.get("to"))):
+        html = render_html(summary, base_url=base_url)
+        today = datetime.now().strftime("%Y-%m-%d")
+        prefix = "[テスト] " if test else ""
+        n_bad = summary["stats"]["n_ga4_bad"] + summary["stats"]["n_gtm_bad"] + summary["stats"]["n_sc_bad"]
+        subject = f"{prefix}📊 週次サマリー {today} — 要対応 {n_bad}件 / 変化 {summary['change_counts']['total']}件"
+        # メールは to 未設定なら送らない（送信元不備でのエラーを避ける）
+        if s.get("to") or force:
+            channels["email"] = send_email(subject, html, settings=s)
+
+    # Slack
+    if force or s.get("slack_enabled"):
+        channels["slack"] = send_slack(summary, s, base_url=base_url, test=test)
+
+    # Webhook
+    if force or s.get("webhook_enabled"):
+        channels["webhook"] = send_webhook(summary, s, base_url=base_url, test=test)
+
+    any_sent = any(c.get("ok") for c in channels.values())
+    if any_sent and not test:
         with _lock:
             cur = load_settings()
             cur["last_sent_week"] = datetime.now().strftime("%G-W%V")
             cur["last_sent_at"] = datetime.now(timezone.utc).isoformat()
             _write(cur)
+
+    if not channels:
+        return {"ok": False, "error": "有効な通知チャネルがありません", "channels": {}}
+    # 後方互換: メール単独の呼び出し元向けに ok/to/error を残す
+    result = {"ok": any_sent, "channels": channels, "any_sent": any_sent}
+    if "email" in channels:
+        result.update({k: v for k, v in channels["email"].items() if k in ("to", "error")})
+    if not any_sent:
+        errs = [f"{k}: {v.get('error')}" for k, v in channels.items() if not v.get("ok")]
+        result["error"] = " / ".join(errs) if errs else "送信に失敗しました"
     return result
 
 
@@ -326,9 +488,14 @@ def start_scheduler(loader, interval_sec: int = 600) -> None:
     threading.Thread(target=_loop, daemon=True, name="notify-scheduler").start()
 
 
+def _any_channel_enabled(s: dict) -> bool:
+    return bool((s.get("enabled") and s.get("to"))
+                or s.get("slack_enabled") or s.get("webhook_enabled"))
+
+
 def _tick(loader) -> None:
     s = load_settings()
-    if not s.get("enabled"):
+    if not _any_channel_enabled(s):
         return
     now = datetime.now()
     if now.weekday() != int(s.get("weekday") or 0):
