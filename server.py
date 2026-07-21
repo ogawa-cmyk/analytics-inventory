@@ -29,7 +29,6 @@ import crossref
 import diff as diff_mod
 import health
 import notifications
-import search_index
 import thresholds
 import update_check
 from config import DEMO_MODE, DETAILS_DIR, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT
@@ -670,16 +669,6 @@ def api_gtm_ai_run(cid: str, stamp: str):
     if not run:
         abort(404)
     return jsonify(run)
-
-
-@app.route("/search")
-def search_view():
-    inv = _load_inventory()
-    q = (request.args.get("q") or "").strip()
-    kinds = request.args.getlist("kind") or ["event", "ke", "cd", "cm", "tag", "trigger", "variable"]
-    hits = search_index.search(q, inv, kinds=kinds) if q else []
-    by_kind = Counter(h["kind"] for h in hits)
-    return render_template("search.html", inv=inv, q=q, kinds=kinds, hits=hits, by_kind=by_kind)
 
 
 @app.route("/api/annotate", methods=["POST"])

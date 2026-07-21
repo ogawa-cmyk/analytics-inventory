@@ -386,8 +386,7 @@ analytics-inventory/
 ├── health.py                  # ヘルススコア・アラート判定
 ├── crossref.py                # GA4↔GTM紐付け
 ├── diff.py                    # スナップショット差分
-├── annotations.py             # お気に入り・タグ・メモ
-├── search_index.py            # 横串検索
+├── annotations.py             # お気に入り・タグ・メモ・監視除外
 ├── collect_sc_only.py         # SC再収集スクリプト
 ├── retry_errors.py            # エラー再試行
 ├── collectors/
