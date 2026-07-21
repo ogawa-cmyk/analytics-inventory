@@ -1,0 +1,51 @@
+# Cloud Build: タグ push（v*）で analytics-inventory-demo を自動ビルド&デプロイする。
+# トリガー作成後は `git push origin vX.Y.Z` だけでデモに反映される（ローカル gcloud 不要）。
+#
+# セットアップ:
+#   1. Cloud Build コンソールで GitHub リポ(ogawa-cmyk/analytics-inventory)を連携
+#   2. トリガー作成: イベント=タグ push / タグパターン=^v.*$ / 構成=この cloudbuild.yaml
+#   3. Cloud Build の実行 SA に run.admin + iam.serviceAccountUser を付与
+#
+# デモ用（demo_server:app）のイメージをビルドする。ルートの Dockerfile がデモ構成。
+
+substitutions:
+  _SERVICE: analytics-inventory-demo
+  _REGION: asia-northeast1
+  _AR: cloud-run-source-deploy   # `gcloud run deploy --source` が作る既定のArtifact Registryリポ
+
+steps:
+  # 1) コンテナイメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build
+    args:
+      - build
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR}/${_SERVICE}:$COMMIT_SHA'
+      - '.'
+
+  # 2) Artifact Registry へ push
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push
+    args:
+      - push
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR}/${_SERVICE}:$COMMIT_SHA'
+
+  # 3) Cloud Run へデプロイ（デモは公開・スケール0起点）
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - '${_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR}/${_SERVICE}:$COMMIT_SHA'
+      - '--region=${_REGION}'
+      - '--allow-unauthenticated'
+      - '--min-instances=0'
+      - '--platform=managed'
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR}/${_SERVICE}:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
