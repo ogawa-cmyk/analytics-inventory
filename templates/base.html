@@ -74,6 +74,14 @@
   html,body{height:100%}
   body{font-family:-apple-system,'Segoe UI',Meiryo,sans-serif;margin:0;background:var(--g-bg);color:var(--g-text);transition:background .15s,color .15s}
 
+  /* ===== Demo banner (下部固定・常時表示) ===== */
+  .demo-banner{position:fixed;left:0;right:0;bottom:0;z-index:900;background:#1b3a1c;color:#fff;font-size:13px;padding:9px 20px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center;box-shadow:0 -2px 8px rgba(0,0,0,.25)}
+  .demo-banner b{color:#ffd54f}
+  .demo-banner a.demo-cta{display:inline-flex;align-items:center;gap:6px;background:#fff;color:#1b5e20;padding:5px 14px;border-radius:6px;text-decoration:none;font-weight:600;white-space:nowrap}
+  .demo-banner a.demo-cta:hover{background:#e8f5e9}
+  body:has(.demo-banner){padding-bottom:56px}
+  @media (max-width:600px){body:has(.demo-banner){padding-bottom:88px}}
+
   /* ===== Header ===== */
   header{background:linear-gradient(135deg,var(--g-primary) 0%,var(--g-primary-dark) 100%);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow-md);position:sticky;top:0;z-index:50}
   header .brand{font-size:16px;font-weight:600;letter-spacing:.02em;white-space:nowrap;text-decoration:none;color:#fff;display:flex;align-items:center;gap:8px}
@@ -383,6 +391,13 @@
   {% block body %}{% endblock %}
 </main>
 {% endblock %}
+
+{% if demo_mode %}
+<div class="demo-banner">
+  <span>🧪 こちらは <b>デモ版</b>です（サンプルデータで全機能をお試しいただけます）。自社のGA4・GTM・Search Consoleで使うには、無料のソースコードをどうぞ →</span>
+  <a class="demo-cta" href="{{ github_url }}" target="_blank" rel="noopener">⬇ GitHubから入手（無料）</a>
+</div>
+{% endif %}
 
 <div id="toast" class="toast"></div>
 

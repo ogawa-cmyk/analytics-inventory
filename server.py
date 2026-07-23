@@ -31,7 +31,7 @@ import health
 import notifications
 import thresholds
 import update_check
-from config import DEMO_MODE, DETAILS_DIR, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT
+from config import DEMO_MODE, DETAILS_DIR, GITHUB_REPO, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
@@ -99,7 +99,8 @@ def _load_inventory() -> dict:
 
 @app.context_processor
 def inject_globals():
-    return {"all_tags": ann.all_tags(), "demo_mode": DEMO_MODE}
+    return {"all_tags": ann.all_tags(), "demo_mode": DEMO_MODE,
+            "github_url": f"https://github.com/{GITHUB_REPO}"}
 
 
 @app.route("/")
