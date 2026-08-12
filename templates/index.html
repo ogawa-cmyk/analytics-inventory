@@ -14,41 +14,47 @@
 
 <div class="filters">
   <input type="search" id="q" placeholder="検索（プロパティ名/ID/アカウント/タグ/メモ）">
-  <select id="track-filter">
-    <option value="">計測: すべて</option>
-    <option value="yes">計測中のみ</option>
-    <option value="no">未計測のみ</option>
-  </select>
-  <select id="ecom-filter">
-    <option value="">eコマース: すべて</option>
-    <option value="yes">あり</option>
-    <option value="no">なし</option>
+  <select id="grade-filter">
+    <option value="">グレード: すべて</option>
+    {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
   </select>
   <select id="email-filter">
     <option value="">アカウント: すべて</option>
     {% for e in inv.accounts_scanned or [] %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
   </select>
-  <select id="grade-filter">
-    <option value="">グレード: すべて</option>
-    {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
-  </select>
-  <select id="tag-filter">
-    <option value="">タグ: すべて</option>
-    {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-  </select>
-  <select id="fav-filter">
-    <option value="">お気に入り: すべて</option>
-    <option value="yes">お気に入りのみ</option>
-  </select>
-  <select id="excl-filter">
-    <option value="">監視: すべて</option>
-    <option value="no">監視中のみ</option>
-    <option value="yes">停止・除外のみ</option>
-  </select>
   <button class="btn" onclick="selectAlerted()" style="margin-left:auto">⚠ アラート分を選択</button>
   <button class="btn" id="bulk-btn" onclick="openBulkDialog()" disabled style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">🤖 一括AI分析 (<span id="sel-count">0</span>)</button>
   <a href="/export/properties.csv" class="btn">⬇ CSV</a>
 </div>
+
+<details class="adv-filters" id="adv-filters">
+  <summary>詳細フィルタ<span class="adv-count" id="adv-count" style="display:none">0</span></summary>
+  <div class="adv-body">
+    <select id="track-filter">
+      <option value="">計測: すべて</option>
+      <option value="yes">計測中のみ</option>
+      <option value="no">未計測のみ</option>
+    </select>
+    <select id="ecom-filter">
+      <option value="">eコマース: すべて</option>
+      <option value="yes">あり</option>
+      <option value="no">なし</option>
+    </select>
+    <select id="tag-filter">
+      <option value="">タグ: すべて</option>
+      {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+    </select>
+    <select id="fav-filter">
+      <option value="">お気に入り: すべて</option>
+      <option value="yes">お気に入りのみ</option>
+    </select>
+    <select id="excl-filter">
+      <option value="">監視: すべて</option>
+      <option value="no">監視中のみ</option>
+      <option value="yes">停止・除外のみ</option>
+    </select>
+  </div>
+</details>
 <div class="filter-chips" id="active-chips"></div>
 
 <div class="table-wrap">

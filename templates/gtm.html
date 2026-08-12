@@ -16,40 +16,46 @@
 {% set emails = containers|map(attribute='auth_email')|unique|sort|list %}
 <div class="filters">
   <input type="search" id="q" placeholder="検索（コンテナ名/ID/Measurement ID/タグ・トリガー・変数名）">
-  <select id="email-filter">
-    <option value="">アカウント: すべて</option>
-    {% for e in emails %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
-  </select>
-  <select id="active-filter">
-    <option value="">稼働: すべて</option>
-    <option value="yes">稼働中（タグあり）</option>
-    <option value="no">未稼働（タグなし）</option>
-  </select>
-  <select id="ga4-filter">
-    <option value="">GA4連携: すべて</option>
-    <option value="yes">GA4紐づけあり</option>
-    <option value="no">GA4紐づけなし</option>
-  </select>
   <select id="grade-filter">
     <option value="">グレード: すべて</option>
     {% for g in ['A','B','C','D','F'] %}<option value="{{ g }}">{{ g }}のみ</option>{% endfor %}
   </select>
-  <select id="tag-filter">
-    <option value="">タグ: すべて</option>
-    {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-  </select>
-  <select id="fav-filter">
-    <option value="">お気に入り: すべて</option>
-    <option value="yes">お気に入りのみ</option>
-  </select>
-  <select id="excl-filter">
-    <option value="">監視: すべて</option>
-    <option value="no">監視中のみ</option>
-    <option value="yes">停止・除外のみ</option>
+  <select id="email-filter">
+    <option value="">アカウント: すべて</option>
+    {% for e in emails %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
   </select>
   <span class="small" id="match-count"></span>
   <a href="/export/gtm.csv" class="btn" style="margin-left:auto">⬇ CSV</a>
 </div>
+
+<details class="adv-filters" id="adv-filters">
+  <summary>詳細フィルタ<span class="adv-count" id="adv-count" style="display:none">0</span></summary>
+  <div class="adv-body">
+    <select id="active-filter">
+      <option value="">稼働: すべて</option>
+      <option value="yes">稼働中（タグあり）</option>
+      <option value="no">未稼働（タグなし）</option>
+    </select>
+    <select id="ga4-filter">
+      <option value="">GA4連携: すべて</option>
+      <option value="yes">GA4紐づけあり</option>
+      <option value="no">GA4紐づけなし</option>
+    </select>
+    <select id="tag-filter">
+      <option value="">タグ: すべて</option>
+      {% for t in all_tags %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+    </select>
+    <select id="fav-filter">
+      <option value="">お気に入り: すべて</option>
+      <option value="yes">お気に入りのみ</option>
+    </select>
+    <select id="excl-filter">
+      <option value="">監視: すべて</option>
+      <option value="no">監視中のみ</option>
+      <option value="yes">停止・除外のみ</option>
+    </select>
+  </div>
+</details>
 
 <div class="table-wrap">
 <table id="tbl">

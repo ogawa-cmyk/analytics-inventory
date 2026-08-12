@@ -166,6 +166,17 @@
   .filters input,.filters select{padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:13px;background:var(--g-card);color:var(--g-text);transition:border-color .15s}
   .filters input:focus,.filters select:focus{outline:none;border-color:var(--g-primary);box-shadow:0 0 0 3px rgba(46,125,50,.12)}
   .filters input[type=search]{min-width:240px}
+  /* 詳細フィルタ（折りたたみ） */
+  .adv-filters{margin-bottom:10px}
+  .adv-filters > summary{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--g-primary);padding:5px 10px;border:1px solid var(--g-border);border-radius:5px;background:var(--g-card);list-style:none;user-select:none}
+  .adv-filters > summary::-webkit-details-marker{display:none}
+  .adv-filters > summary::before{content:"▸";font-size:10px;transition:transform .15s;display:inline-block}
+  .adv-filters[open] > summary::before{transform:rotate(90deg)}
+  .adv-filters > summary:hover{background:var(--g-primary-light)}
+  .adv-filters > summary .adv-count{background:var(--g-primary);color:#fff;border-radius:9px;padding:0 6px;font-size:10px;font-weight:700}
+  .adv-filters .adv-body{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:10px 12px;background:var(--g-row-alt);border:1px solid var(--g-border);border-radius:6px}
+  .adv-filters .adv-body select{padding:7px 10px;border:1px solid var(--g-border);border-radius:5px;font-size:13px;background:var(--g-card);color:var(--g-text)}
+
   .filter-chips{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;min-height:24px}
   .chip{display:inline-flex;align-items:center;gap:4px;background:var(--g-primary-light);color:var(--g-primary-dark);padding:3px 4px 3px 10px;border-radius:14px;font-size:11px;border:1px solid var(--g-border)}
   .chip button{background:transparent;border:none;color:var(--g-primary-dark);cursor:pointer;padding:0 6px;font-size:13px;line-height:1}
@@ -339,21 +350,21 @@
     <span class="nav-divider"></span>
     <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">クライアント</a>
     <a href="/changes" class="{% if request.path == '/changes' %}active{% endif %}">変化ログ</a>
-    <div class="dd" id="dd-ai">
-      <button class="dd-btn" onclick="toggleDd('dd-ai')">分析</button>
+    <div class="dd" id="dd-settings">
+      <button class="dd-btn" onclick="toggleDd('dd-settings')" title="設定・AI分析">⚙</button>
       <div class="dd-menu">
+        <div class="dd-sub">通知・監視の設定</div>
+        <a href="/settings/notifications">週次通知（メール / Slack）</a>
+        <a href="/settings/thresholds">監視しきい値</a>
         <div class="dd-sub">AI分析</div>
-        <a href="/bulk">一括AI分析ジョブ一覧</a>
+        <a href="/bulk">一括AI分析の履歴</a>
         <a href="#" onclick="runQuickAuto(event)">自動診断を実行</a>
-        <div class="dd-sub">監視・通知</div>
-        <a href="/settings/notifications">週次通知設定（メール/Slack）</a>
-        <a href="/settings/thresholds">監視しきい値設定</a>
       </div>
     </div>
     <div class="dd" id="dd-help">
-      <button class="dd-btn" onclick="toggleDd('dd-help')">ⓘ</button>
+      <button class="dd-btn" onclick="toggleDd('dd-help')" title="使い方・ヘルプ">ⓘ</button>
       <div class="dd-menu">
-        <a href="/usage">使い方</a>
+        <a href="/usage">使い方ガイド</a>
         <a href="/help">ヘルプ・用語集</a>
       </div>
     </div>
@@ -601,6 +612,25 @@ window.runQuickAuto = async function(e){
     else { showToast('完了（新規アラートなし）'); }
   } catch(e){ showToast('失敗: ' + e.message, 'error'); }
 };
+
+/* ========== 詳細フィルタ: 使用中の個数バッジ＋自動展開 ========== */
+window.initAdvFilters = function(){
+  const det = document.getElementById('adv-filters');
+  if(!det) return;
+  const badge = document.getElementById('adv-count');
+  const sels = [...det.querySelectorAll('select')];
+  function refresh(){
+    const n = sels.filter(s => s.value).length;
+    if(badge){
+      badge.textContent = n;
+      badge.style.display = n ? '' : 'none';
+    }
+    if(n && !det.open) det.open = true;   // 絞り込み中なら開いたままにする
+  }
+  sels.forEach(s => s.addEventListener('input', refresh));
+  refresh();
+};
+document.addEventListener('DOMContentLoaded', () => window.initAdvFilters());
 
 /* ========== 監視状態の切替（GA4/GTM/SC 一覧で共通） ========== */
 window.setMonitoring = async function(el, kind, key){
