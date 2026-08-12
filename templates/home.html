@@ -80,7 +80,7 @@
 
   {# --- GA4 --- #}
   <div class="h-card">
-    <h3>GA4 ヘルス</h3>
+    <h3>GA4 プロパティの健康状態</h3>
     <div class="top-row">
       <span class="num">{{ properties|length }}</span>
       <span class="lbl">プロパティ</span>
@@ -109,7 +109,7 @@
 
   {# --- GTM --- #}
   <div class="h-card gtm">
-    <h3>GTM ヘルス</h3>
+    <h3>GTM コンテナの健康状態</h3>
     <div class="top-row">
       <span class="num">{{ containers|length }}</span>
       <span class="lbl">コンテナ</span>
@@ -138,7 +138,7 @@
 
   {# --- Search Console --- #}
   <div class="h-card sc">
-    <h3>SC ヘルス</h3>
+    <h3>Search Console の健康状態</h3>
     <div class="top-row">
       <span class="num">{{ sc_sites|length }}</span>
       <span class="lbl">サイト</span>
@@ -171,7 +171,7 @@
 
   {# --- Operations --- #}
   <div class="h-card ops">
-    <h3>運用状況</h3>
+    <h3>データ収集の状況</h3>
     <div class="top-row">
       <span class="num">{{ by_email|length }}</span>
       <span class="lbl">認証Gmail</span>
@@ -243,122 +243,25 @@
     <a href="/export/gtm.csv" class="btn" data-tip="GTMコンテナ一覧をCSV出力">⬇ GTM CSV</a>
     <span class="small" id="action-status" style="margin-left:8px"></span>
   </div>
+
+  {# --- 直近7日の変化サマリー（詳細は変化ログへ） --- #}
+  <div style="border-top:1px solid var(--g-border);margin-top:12px;padding-top:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px">
+    <span style="font-weight:600">📈 直近7日の変化</span>
+    {% if change_summary.total %}
+      {% if change_summary.critical %}<span class="badge b-ng">重大 {{ change_summary.critical }}</span>{% endif %}
+      {% if change_summary.warn %}<span class="badge" style="background:var(--g-warn-bg);color:var(--g-warn)">注意 {{ change_summary.warn }}</span>{% endif %}
+      {% if change_summary.info %}<span class="badge b-na">情報 {{ change_summary.info }}</span>{% endif %}
+    {% else %}
+      <span class="small">検出された変化はありません</span>
+    {% endif %}
+    <a class="prop" href="/changes">→ 変化ログを開く</a>
+  </div>
 </div>
 
 {# ====================================================================
    Section 2: 折りたたみカード（デフォルト閉）
    ==================================================================== #}
 
-{# --- 📈 最近の変化 --- #}
-<details class="section">
-  <summary>📈 最近の変化（前回スナップショット比）<span class="count">{{ recent_changes|length }} 件</span></summary>
-  <div class="section-body">
-    {% if recent_changes %}
-    <table>
-      <thead><tr><th>プロパティ</th><th>変化</th></tr></thead>
-      <tbody>
-      {% for r in recent_changes %}
-        <tr>
-          <td><a class="prop" href="/property/{{ r.prop.property_id }}">{{ r.prop.display_name }}</a><br><span class="small">{{ r.prop.auth_email }}</span></td>
-          <td class="small">
-            {% if r.diff.sessions_7d %}
-              {% set d = r.diff.sessions_7d %}
-              Sessions: {{ '{:,}'.format(d.previous) }} → {{ '{:,}'.format(d.current) }}
-              <span class="{% if d.delta > 0 %}diff-up{% else %}diff-down{% endif %}">({{ '%+d' % d.delta }})</span>
-            {% endif %}
-            {% if r.diff.key_events_added %}<br>キーイベント追加: {{ r.diff.key_events_added|join(', ') }}{% endif %}
-            {% if r.diff.key_events_removed %}<br><span class="diff-down">キーイベント削除: {{ r.diff.key_events_removed|join(', ') }}</span>{% endif %}
-            {% if r.diff.tracking_changed %}<br><span class="diff-down">計測状態変化</span>{% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="small">スナップショット2件以上ないと変化を表示できません（現在: {{ snapshot_count }}）</p>
-    {% endif %}
-    <p class="small" style="margin-top:10px"><a class="prop" href="/changes">→ 変化ログをすべて見る（重要度付き・GTM/SC含む）</a></p>
-  </div>
-</details>
-
-{# --- 🚨 要対応 TOP10 タブ式 --- #}
-<details class="section">
-  <summary>🚨 要対応 TOP10<span class="count">GA4 {{ error_props|length }} / GTM {{ gtm_error_conts|length }} / SC {{ sc_top_trouble|length }}</span></summary>
-  <div class="section-body">
-    <div class="pill-tabs">
-      <button class="active" data-pane="trouble-ga4" onclick="showPane(this)">GA4 ({{ error_props|length }})</button>
-      <button data-pane="trouble-gtm" onclick="showPane(this)">GTM ({{ gtm_error_conts|length }})</button>
-      <button data-pane="trouble-sc" onclick="showPane(this)">SC ({{ sc_top_trouble|length }})</button>
-    </div>
-
-    <div class="pill-pane active" id="trouble-ga4">
-      {% if error_props %}
-      <table>
-        <thead><tr><th>プロパティ</th><th>スコア</th><th>問題</th></tr></thead>
-        <tbody>
-        {% for p in error_props %}
-          <tr>
-            <td><a class="prop" href="/property/{{ p.property_id }}">{{ p.display_name }}</a><br><span class="small">{{ p.auth_email }}</span></td>
-            <td><span class="grade-{{ p.health_grade }}">{{ p.health_grade }}</span> {{ p.health_score }}</td>
-            <td class="small">
-              {% if p.is_tracked == False %}<span class="alert-error">●未計測</span>{% endif %}
-              {% if p.stream_count == 0 %}<span class="alert-error">●ストリーム無</span>{% endif %}
-              {% if p.key_event_count == 0 %}<span class="alert-warn">●キーイベント無</span>{% endif %}
-              {% if p.data_api_ok == False %}<span class="alert-error">●APIエラー</span>{% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}<p class="small">問題なし 👍</p>{% endif %}
-    </div>
-
-    <div class="pill-pane" id="trouble-gtm">
-      {% if gtm_error_conts %}
-      <table>
-        <thead><tr><th>コンテナ</th><th>スコア</th><th>問題</th></tr></thead>
-        <tbody>
-        {% for c in gtm_error_conts %}
-          <tr>
-            <td><a class="prop" href="/gtm/{{ c.container_id }}/tag">{{ c.name }}</a><br><span class="small">{{ c.account_name }}</span></td>
-            <td><span class="grade-{{ c.health_grade }}">{{ c.health_grade }}</span> {{ c.health_score }}</td>
-            <td class="small">
-              {% if c.tag_count == 0 %}<span class="alert-error">●タグ0</span>{% endif %}
-              {% if not c.ga4_measurement_ids %}<span class="alert-warn">●GA4無</span>{% endif %}
-              {% if c._score_summary and c._score_summary.ua_count >= 3 %}<span class="alert-warn">●UA残存{{ c._score_summary.ua_count }}</span>{% endif %}
-              {% if c._score_summary and c._score_summary.tag_total > 400 %}<span class="alert-warn">●規模過大</span>{% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}<p class="small">問題なし 👍</p>{% endif %}
-    </div>
-
-    <div class="pill-pane" id="trouble-sc">
-      {% if sc_top_trouble %}
-      <table>
-        <thead><tr><th>サイト</th><th>スコア</th><th>Click(28d)</th><th>問題</th></tr></thead>
-        <tbody>
-        {% for s in sc_top_trouble %}
-          <tr>
-            <td><a class="prop" href="/sc/{{ s.site_hash }}">{{ s.site_url }}</a><br><span class="small">{{ s.auth_email }}</span></td>
-            <td><span class="grade-{{ s.health_grade }}">{{ s.health_grade }}</span> {{ s.health_score }}</td>
-            <td>{{ '{:,}'.format(s.clicks_28d) }}</td>
-            <td class="small">
-              {% if s.clicks_28d == 0 %}<span class="alert-error">●流入0</span>{% endif %}
-              {% if s.sitemap_count == 0 %}<span class="alert-warn">●sitemap無</span>{% endif %}
-              {% if s.sitemap_errors %}<span class="alert-warn">●sitemapエラー</span>{% endif %}
-              {% if not s.has_ga4_link %}<span class="alert-info">●GA4未連携</span>{% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}<p class="small">問題なし 👍</p>{% endif %}
-    </div>
-  </div>
-</details>
 
 {# --- 🤖 AI分析の活用状況 --- #}
 <details class="section">

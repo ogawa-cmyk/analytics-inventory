@@ -142,39 +142,11 @@ def home():
     # 監視除外（ann_excluded）は要対応・変化・クロス参照の対象から外す
     mon_props = [p for p in props if not p.get("ann_excluded")]
     mon_conts = [c for c in conts if not c.get("ann_excluded")]
-    recent_changes = []
+    # 直近7日の変化サマリー（詳細は /changes に集約）
     try:
-        snaps = diff_mod.list_snapshots()
-        if len(snaps) >= 2:
-            prev = diff_mod.load_snapshot(snaps[1]["file"])
-            prev_map = {str(p.get("property_id")): p for p in (prev.get("properties") or [])}
-            for p in mon_props:
-                d = diff_mod.diff_property(p, prev_map.get(str(p.get("property_id"))))
-                if d and not d.get("first_seen"):
-                    recent_changes.append({"prop": p, "diff": d})
-            recent_changes.sort(
-                key=lambda x: abs(x["diff"].get("sessions_7d", {}).get("delta", 0))
-                if isinstance(x["diff"].get("sessions_7d"), dict) else 0,
-                reverse=True,
-            )
-            recent_changes = recent_changes[:5]
+        change_summary = changes_mod.summary_counts(changes_mod.recent_events(days=7, limit=500))
     except Exception:
-        recent_changes = []
-
-    error_props = sorted(
-        [p for p in mon_props if p.get("has_error_alert")],
-        key=lambda p: p.get("health_score") or 0,
-    )[:10]
-    top_health = sorted(props, key=lambda p: -(p.get("health_score") or 0))[:5]
-
-    _ua_warn = thresholds.get()["ua_warn"]
-    gtm_error_conts = sorted(
-        [c for c in mon_conts if c.get("has_error_alert") or c.get("health_grade") in ("D", "F")
-         or c.get("_score_summary", {}).get("ua_count", 0) >= _ua_warn
-         or not (c.get("ga4_measurement_ids") or [])],
-        key=lambda c: c.get("health_score") or 0,
-    )[:10]
-    gtm_top_health = sorted(conts, key=lambda c: -(c.get("health_score") or 0))[:5]
+        change_summary = {"critical": 0, "warn": 0, "info": 0, "total": 0}
 
     cross = crossref.build(mon_props, mon_conts)
     duplicate_mids = cross["duplicate_mids_in_containers"][:10]
@@ -197,11 +169,6 @@ def home():
     sc_total_clicks = sum((s.get("clicks_28d") or 0) for s in sc_sites)
     sc_total_imps = sum((s.get("impressions_28d") or 0) for s in sc_sites)
     sc_alerts_summary = health.sc_alert_summary(sc_sites) if sc_sites else {"error_count": 0, "warn_count": 0, "issues": {"no_clicks": 0, "no_sitemap": 0, "low_ctr": 0, "no_ga4_link": 0}}
-    sc_top_trouble = sorted(
-        [s for s in sc_sites if s.get("has_error_alert") or s.get("health_grade") in ("D", "F")],
-        key=lambda s: s.get("health_score") or 0,
-    )[:10]
-    sc_top_health = sorted(sc_sites, key=lambda s: -(s.get("health_score") or 0))[:5]
 
     # === LAYER 5 — Fixed assets ===
     fav_props = [p for p in props if p.get("ann_favorite")]
@@ -230,7 +197,6 @@ def home():
         sc_sites=sc_sites, sc_grade_dist=sc_grade_dist, sc_avg_score=sc_avg_score,
         sc_total_clicks=sc_total_clicks, sc_total_imps=sc_total_imps,
         sc_alerts_summary=sc_alerts_summary,
-        sc_top_trouble=sc_top_trouble, sc_top_health=sc_top_health,
         # layer 2
         alerts=alerts, gtm_alerts=gtm_alerts,
         duplicate_mids=duplicate_mids,
@@ -239,9 +205,7 @@ def home():
         ai_cov_prop=ai_cov_prop, ai_cov_gtm=ai_cov_gtm,
         top_categories=top_categories,
         # layer 4
-        recent_changes=recent_changes,
-        error_props=error_props, top_health=top_health,
-        gtm_error_conts=gtm_error_conts, gtm_top_health=gtm_top_health,
+        change_summary=change_summary,
         mismatch_props=mismatch_props,
         # layer 5
         fav_props=fav_props, fav_conts=fav_conts,

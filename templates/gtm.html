@@ -43,9 +43,9 @@
     <option value="yes">お気に入りのみ</option>
   </select>
   <select id="excl-filter">
-    <option value="">監視除外: 含む</option>
-    <option value="no">除外中を隠す</option>
-    <option value="yes">除外中のみ</option>
+    <option value="">監視: すべて</option>
+    <option value="no">監視中のみ</option>
+    <option value="yes">停止・除外のみ</option>
   </select>
   <span class="small" id="match-count"></span>
   <a href="/export/gtm.csv" class="btn" style="margin-left:auto">⬇ CSV</a>
@@ -56,7 +56,7 @@
   <thead>
     <tr>
       <th>★</th>
-      <th data-tip="チェックすると監視から除外します（要対応・変化ログ・週次メール・自動診断の対象外。一覧には残ります）">🔕</th>
+      <th data-tip="監視のオン／一時停止／除外を切り替えます。停止・除外中は要対応・変化ログ・週次通知・自動診断の対象外になります（一覧には残ります）">監視</th>
       <th data-k="auth_email" data-type="str">認証Gmail</th>
       <th data-k="account_name" data-type="str">GTMアカウント</th>
       <th data-k="name" data-type="str">コンテナ</th>
@@ -94,12 +94,10 @@
       data-varcount="{{ c.variable_count }}">
       <td><button type="button" class="fav-star {% if c.ann_favorite %}on{% endif %}" data-on="{{ '1' if c.ann_favorite else '0' }}" onclick="toggleFavGtm(this, '{{ c.container_id }}')" aria-label="{{ 'お気に入り解除' if c.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if c.ann_favorite else 'false' }}">★</button></td>
       <td class="excl-cell">
-        <select class="excl-select {{ 'off' if c.ann_excluded }}" onchange="setMonitoring(this, 'containers', '{{ c.container_id }}')" title="監視の状態（スヌーズ / 除外）" aria-label="監視の状態">
+        <select class="excl-select {{ 'off' if c.ann_excluded }}" onchange="setMonitoring(this, 'containers', '{{ c.container_id }}')" title="このコンテナを監視するか（アラート・変化ログ・週次通知の対象）" aria-label="監視">
           {% if c.ann_snooze_until %}<option value="_snoozed" selected>⏸ {{ c.ann_snooze_until[5:].replace('-','/') }}まで</option>{% endif %}
           <option value="on" {% if not c.ann_excluded %}selected{% endif %}>🔔 監視中</option>
-          <option value="7">⏸ 7日停止</option>
-          <option value="30">⏸ 30日停止</option>
-          <option value="90">⏸ 90日停止</option>
+          <option value="pause">⏸ 一時停止…</option>
           <option value="off" {% if c.ann_excluded_permanent %}selected{% endif %}>🔕 除外</option>
         </select>
       </td>
@@ -183,30 +181,6 @@ async function toggleFavGtm(el, cid){
     el.setAttribute('aria-label', newVal ? 'お気に入り解除' : 'お気に入りに追加');
     showToast(newVal ? '⭐ お気に入り追加' : 'お気に入り解除');
   } catch(e){ showToast('失敗'); }
-}
-
-async function setMonitoring(el, kind, key){
-  const v = el.value;
-  if(v === '_snoozed') return;
-  let body = {kind, key};
-  if(v === 'on'){ body.excluded = false; body.snooze_days = 0; }
-  else if(v === 'off'){ body.excluded = true; }
-  else { body.snooze_days = parseInt(v, 10); }
-  try {
-    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if(!r.ok) throw new Error('save failed');
-    const excluded = (v !== 'on');
-    const tr = el.closest('tr');
-    tr.dataset.excl = excluded ? 'yes' : 'no';
-    tr.classList.toggle('excluded-row', excluded);
-    el.classList.toggle('off', excluded);
-    if(v === 'on') showToast('🔔 監視対象に戻しました');
-    else if(v === 'off') showToast('🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）');
-    else showToast(`⏸ ${v}日間スヌーズしました（期限が来ると自動で監視再開）`);
-    applyFilter();
-  } catch(e){
-    showToast('保存失敗: ' + e.message, 'error');
-  }
 }
 
 const sortDir = {};

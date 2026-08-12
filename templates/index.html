@@ -41,9 +41,9 @@
     <option value="yes">お気に入りのみ</option>
   </select>
   <select id="excl-filter">
-    <option value="">監視除外: 含む</option>
-    <option value="no">除外中を隠す</option>
-    <option value="yes">除外中のみ</option>
+    <option value="">監視: すべて</option>
+    <option value="no">監視中のみ</option>
+    <option value="yes">停止・除外のみ</option>
   </select>
   <button class="btn" onclick="selectAlerted()" style="margin-left:auto">⚠ アラート分を選択</button>
   <button class="btn" id="bulk-btn" onclick="openBulkDialog()" disabled style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">🤖 一括AI分析 (<span id="sel-count">0</span>)</button>
@@ -57,7 +57,7 @@
     <tr>
       <th><input type="checkbox" id="check-all" onclick="toggleAll(this.checked)"></th>
       <th>★</th>
-      <th data-tip="チェックすると監視から除外します（要対応・変化ログ・週次メール・自動診断の対象外。一覧には残ります）">🔕</th>
+      <th data-tip="監視のオン／一時停止／除外を切り替えます。停止・除外中は要対応・変化ログ・週次通知・自動診断の対象外になります（一覧には残ります）">監視</th>
       <th data-type="str">認証Gmail</th>
       <th data-type="str">GA4アカウント</th>
       <th data-type="str">プロパティ</th>
@@ -88,12 +88,10 @@
       <td><input type="checkbox" class="row-check" value="{{ p.property_id }}" onchange="updateSelCount()"></td>
       <td><button type="button" class="fav-star {% if p.ann_favorite %}on{% endif %}" data-on="{{ '1' if p.ann_favorite else '0' }}" onclick="toggleFav(this, '{{ p.property_id }}')" aria-label="{{ 'お気に入り解除' if p.ann_favorite else 'お気に入りに追加' }}" aria-pressed="{{ 'true' if p.ann_favorite else 'false' }}">★</button></td>
       <td class="excl-cell">
-        <select class="excl-select {{ 'off' if p.ann_excluded }}" onchange="setMonitoring(this, 'properties', '{{ p.property_id }}')" title="監視の状態（スヌーズ / 除外）" aria-label="監視の状態">
+        <select class="excl-select {{ 'off' if p.ann_excluded }}" onchange="setMonitoring(this, 'properties', '{{ p.property_id }}')" title="このプロパティを監視するか（アラート・変化ログ・週次通知の対象）" aria-label="監視">
           {% if p.ann_snooze_until %}<option value="_snoozed" selected>⏸ {{ p.ann_snooze_until[5:].replace('-','/') }}まで</option>{% endif %}
           <option value="on" {% if not p.ann_excluded %}selected{% endif %}>🔔 監視中</option>
-          <option value="7">⏸ 7日停止</option>
-          <option value="30">⏸ 30日停止</option>
-          <option value="90">⏸ 90日停止</option>
+          <option value="pause">⏸ 一時停止…</option>
           <option value="off" {% if p.ann_excluded_permanent %}selected{% endif %}>🔕 除外</option>
         </select>
       </td>
@@ -264,7 +262,7 @@ function renderActiveChips(){
     {label:'グレード', el:gf, clear:()=>{gf.value=''}},
     {label:'タグ', el:tagf, clear:()=>{tagf.value=''}},
     {label:'お気に入り', el:ff, map:{yes:'のみ'}, clear:()=>{ff.value=''}},
-    {label:'監視除外', el:exf, map:{no:'隠す', yes:'のみ'}, clear:()=>{exf.value=''}},
+    {label:'監視', el:exf, map:{no:'監視中のみ', yes:'停止・除外のみ'}, clear:()=>{exf.value=''}},
   ];
   c.innerHTML = items.filter(i => i.el && i.el.value).map(i => {
     const v = i.map ? (i.map[i.el.value] || i.el.value) : i.el.value;
@@ -275,30 +273,6 @@ const _origApply = apply;
 window.apply = function(){ _origApply(); renderActiveChips(); };
 [q,tf,ef,em,gf,tagf,ff,exf].forEach(el => el && el.addEventListener('input', renderActiveChips));
 renderActiveChips();
-
-async function setMonitoring(el, kind, key){
-  const v = el.value;
-  if(v === '_snoozed') return;
-  let body = {kind, key};
-  if(v === 'on'){ body.excluded = false; body.snooze_days = 0; }
-  else if(v === 'off'){ body.excluded = true; }
-  else { body.snooze_days = parseInt(v, 10); }
-  try {
-    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if(!r.ok) throw new Error('save failed');
-    const excluded = (v !== 'on');
-    const tr = el.closest('tr');
-    tr.dataset.excl = excluded ? 'yes' : 'no';
-    tr.classList.toggle('excluded-row', excluded);
-    el.classList.toggle('off', excluded);
-    if(v === 'on') showToast('🔔 監視対象に戻しました');
-    else if(v === 'off') showToast('🔕 監視から除外しました（要対応・変化ログ・週次メールの対象外）');
-    else showToast(`⏸ ${v}日間スヌーズしました（期限が来ると自動で監視再開）`);
-    apply();
-  } catch(e){
-    showToast('保存失敗: ' + e.message, 'error');
-  }
-}
 
 async function toggleFav(el, pid){
   const on = el.dataset.on === '1';

@@ -602,6 +602,51 @@ window.runQuickAuto = async function(e){
   } catch(e){ showToast('失敗: ' + e.message, 'error'); }
 };
 
+/* ========== 監視状態の切替（GA4/GTM/SC 一覧で共通） ========== */
+window.setMonitoring = async function(el, kind, key){
+  const v = el.value;
+  if(v === '_snoozed') return;           // 現在のスヌーズ表示を選び直しただけ
+  let body = {kind, key};
+  let msg = '';
+  if(v === 'on'){
+    body.excluded = false; body.snooze_days = 0;
+    msg = '🔔 監視対象に戻しました';
+  } else if(v === 'off'){
+    body.excluded = true;
+    msg = '🔕 監視から除外しました（要対応・変化ログ・週次通知の対象外）';
+  } else if(v === 'pause'){
+    const days = await showModal({
+      title: '監視を一時停止',
+      body: '<p>指定した期間だけアラートを止めます。期限が来ると自動で監視に戻ります。</p>',
+      actions: [
+        {label: 'キャンセル', value: 0},
+        {label: '7日間', value: 7},
+        {label: '30日間', value: 30, primary: true},
+        {label: '90日間', value: 90},
+      ],
+    });
+    if(!days){ el.value = el.dataset.prev || 'on'; return; }
+    body.snooze_days = days;
+    msg = `⏸ ${days}日間停止しました（期限後に自動再開）`;
+  }
+  try {
+    const r = await fetch('/api/annotate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if(!r.ok) throw new Error('save failed');
+    const paused = (v !== 'on');
+    const tr = el.closest('tr');
+    tr.dataset.excl = paused ? 'yes' : 'no';
+    tr.classList.toggle('excluded-row', paused);
+    el.classList.toggle('off', paused);
+    el.dataset.prev = v;
+    showToast(msg);
+    if(typeof applyFilter === 'function') applyFilter();
+    else if(typeof apply === 'function') apply();
+    if(v === 'pause') setTimeout(() => location.reload(), 900);  // 期限表示を反映
+  } catch(e){
+    showToast('保存失敗: ' + e.message, 'error');
+  }
+};
+
 /* ========== Keyboard shortcuts ========== */
 let _keyBuf = '';
 let _keyT = null;
