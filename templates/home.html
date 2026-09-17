@@ -217,6 +217,15 @@
     {% if gtm_alerts.issues.no_ga4 %}
       <div class="alert-tile" onclick="showAlertDetails('no_ga4','GTM GA4未連携')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.no_ga4 }}件</b>のGTMでGA4未連携<div class="label">Measurement ID未設定</div></div>
     {% endif %}
+    {% if alerts.issues.quality %}
+      <div class="alert-tile" onclick="showAlertDetails('quality','データ品質の検出')"><span class="tool-tag ga4">📊 GA4</span><b>{{ alerts.issues.quality }}件</b>のプロパティで品質検出<div class="label">404流入・PII・タグ発火漏れ等</div></div>
+    {% endif %}
+    {% if gtm_alerts.issues.dup_ad_labels %}
+      <div class="alert-tile" onclick="showAlertDetails('dup_ad_labels','広告CVラベル重複')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.dup_ad_labels }}件</b>のGTMで広告CV重複<div class="label">成果の多重計上</div></div>
+    {% endif %}
+    {% if gtm_alerts.issues.ua_in_html %}
+      <div class="alert-tile" onclick="showAlertDetails('ua_in_html','カスタムHTML内の旧GA')"><span class="tool-tag gtm">🏷 GTM</span><b>{{ gtm_alerts.issues.ua_in_html }}件</b>のGTMでHTML内旧GA<div class="label">タグ種別では見えない残存</div></div>
+    {% endif %}
     {% if sc_alerts_summary.issues.no_clicks %}
       <div class="alert-tile severe" onclick="showAlertDetails('sc_no_clicks','SC Click=0')"><span class="tool-tag sc">🔍 SC</span><b>{{ sc_alerts_summary.issues.no_clicks }}件</b>のSCサイトでClick 0<div class="label">流入なし</div></div>
     {% endif %}
@@ -395,6 +404,37 @@ function showPane(btn){
 }
 
 const REMEDIATION_GUIDE = {
+  quality: {
+    summary: '実績データの形から検出した不備（404流入・個人情報のURL混入・基盤タグの発火漏れ・イベント作成ルール重複・海外からの機械的アクセスなど）があるプロパティ。設定一覧を眺めるだけでは見つからない問題です。',
+    steps: [
+      'プロパティ詳細ページの「🔍 データ品質チェック」で個々の指摘を開く（各指摘に対応方法つき）',
+      '<b>個人情報の混入</b>はGA4利用規約に関わるため最優先で対処（URL設計の修正＋ユーザーデータ削除リクエスト）',
+      '<b>404流入</b>はリンク元を特定してリダイレクトまたはリンク修正',
+      '<b>基盤タグの発火漏れ</b>はGoogleタグが「初期化」または「全ページ」で発火しているか確認',
+      '「未確認」の項目はデータ未取得の意味。再収集で埋まります',
+    ],
+    aiHint: '検出の詳細と対応順は各プロパティ詳細ページで確認できます。',
+  },
+  dup_ad_labels: {
+    summary: '同じコンバージョンID・ラベルの組み合わせで発火するGoogle広告CVタグが複数あるコンテナ。1回の成果が広告側で多重カウントされ、自動入札が実際より多い成果数を前提に動きます。',
+    steps: [
+      'GTMのタグ一覧で該当タグを開き、コンバージョンID・ラベルを確認',
+      '同じ成果を指すなら1本に統合（発火条件をORでまとめる）',
+      'プラン別・店舗別に分けたい意図があるなら、Google Ads側で別のコンバージョンラベルを発行してから分岐',
+      '値が変数参照で「判定不能」となったタグは、ルックアップテーブルの中身を目視で突き合わせる',
+    ],
+    aiHint: 'コンテナ詳細ページの「🤖 AI分析」でタグ構成全体を診断できます。',
+  },
+  ua_in_html: {
+    summary: 'カスタムHTMLタグの中身にUniversal Analytics（UA-ID・analytics.js・_gaq）への参照が残っているコンテナ。タグ種別の一覧では「html」としか見えないため見落とされがちです。UAは2024年7月にデータ処理を停止済みで、送っても保存されません。',
+    steps: [
+      'GTMのタグ一覧で該当のカスタムHTMLタグを開き、中身を確認',
+      '純粋なUA送信コードなら削除（読み込み分だけページが軽くなります）',
+      'UA送信に副作用（dataLayer push等）が混ざっている場合は、その部分だけ残して書き換え',
+      '削除前に、GA4側の計測がこのタグに依存していないことを確認',
+    ],
+    aiHint: 'コンテナ詳細ページの「🤖 AI分析」で移行漏れを網羅的に診断できます。',
+  },
   untracked: {
     summary: '直近7日間でセッション・ユーザー・イベントいずれも0件のプロパティ。計測停止または同意管理ブロック・ボット混入の可能性。',
     steps: [

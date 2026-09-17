@@ -27,6 +27,34 @@
   {% endif %}
 </p>
 
+{% set ss = container._score_summary or {} %}
+{% if ss.awct_dup_groups or ss.html_ua_tags or ss.awct_unresolved %}
+<div class="card card-section" style="margin-bottom:14px;border-left:3px solid var(--g-warn)">
+  <h2>🔍 タグ品質の検出</h2>
+  {% for g in ss.awct_dup_groups %}
+  <p style="font-size:13px;line-height:1.7" class="alert-warn">
+    ⚠ 広告CVタグ{{ g.tags|length }}本（{{ g.tags|join('、') }}）が同一のコンバージョンID・ラベル
+    （<code>{{ g.conversion_id }}</code> / <code>{{ g.label }}</code>）で発火します。
+    1回の成果が広告側で多重にカウントされ、自動入札が実際より多い成果数を前提に動きます。
+    1本への統合か、Google Ads側で別ラベルを発行してからの分岐を検討してください。
+  </p>
+  {% endfor %}
+  {% if ss.html_ua_tags %}
+  <p style="font-size:13px;line-height:1.7" class="alert-warn">
+    ⚠ カスタムHTML内に旧GA（UA測定ID・analytics.js・_gaq）への参照が{{ ss.html_ua_tags|length }}本あります
+    （{{ ss.html_ua_tags|join('、') }}）。UAは2024年7月にデータ処理を停止済みで、送っても保存されません。
+    副作用が無ければ削除を検討してください。
+  </p>
+  {% endif %}
+  {% if ss.awct_unresolved %}
+  <p class="small" style="color:var(--g-text-muted)">
+    広告CVタグ{{ ss.awct_unresolved|length }}本（{{ ss.awct_unresolved|join('、') }}）はID・ラベルが
+    変数参照（ルックアップテーブル等）のため重複を機械判定できません。実際に配信される値を目視で突き合わせてください。
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid var(--g-ai)">
   <h2 style="color:var(--g-ai);border-bottom-color:var(--g-ai-bg)">🤖 GTM AI分析・アクションプラン生成</h2>
   <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">

@@ -10,6 +10,7 @@
   <aside class="toc-side">
     <h3>このページの目次</h3>
     <a href="#sec-overview">概要・アラート</a>
+    <a href="#sec-quality">🔍 品質チェック</a>
     <a href="#sec-ai">🤖 AI分析</a>
     <a href="#sec-diff">📈 前回比差分</a>
     <a href="#sec-notes">🏷 タグ・メモ</a>
@@ -19,7 +20,9 @@
     <a href="#sec-cd">カスタムDim</a>
     <a href="#sec-cm">カスタム指標</a>
     <a href="#sec-events">イベント一覧</a>
+    <a href="#sec-settings">計測設定</a>
     <a href="#sec-roles">権限</a>
+    <a href="#sec-manual">🖐 目視チェック</a>
   </aside>
   <div class="main-col">
 {% block body %}
@@ -41,6 +44,62 @@
   </ul>
 </div>
 {% endif %}
+
+<div class="card card-section" id="sec-quality" style="margin-bottom:14px">
+  {% if d.quality %}
+  <h2>🔍 データ品質チェック
+    <span class="small" style="font-weight:normal">重大 {{ d.quality.counts.error }} ・ 要確認 {{ d.quality.counts.warn }} ・ 参考 {{ d.quality.counts.info }} ・ 未確認 {{ d.quality.unverified }}</span>
+  </h2>
+  {% if d.quality.findings %}
+  <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+    {% for f in d.quality.findings %}
+    {% set col = 'var(--g-error)' if f.level == 'error' else ('var(--g-warn)' if f.level == 'warn' else '#78909c') %}
+    <details style="background:var(--g-row-alt);border-left:3px solid {{ col }};border-radius:5px">
+      <summary style="padding:9px 12px;cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="badge" style="background:{{ col }};color:#fff">{{ f.severity }}</span>
+        <span class="small">{{ f.category }}</span>
+        <b style="font-size:13px">{{ f.title }}</b>
+      </summary>
+      <div style="padding:0 12px 10px;font-size:12px;line-height:1.7;color:var(--g-text-muted)">
+        <p style="margin:4px 0">{{ f.message }}</p>
+        <p style="margin:4px 0"><b>対応:</b> {{ f.fix }}</p>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="small" style="margin:4px 0 10px">具体的な指摘はありません。</p>
+  {% endif %}
+  <details>
+    <summary class="small" style="cursor:pointer">全{{ d.quality.checks|length }}項目の判定一覧を表示</summary>
+    <table style="margin-top:8px">
+      <thead><tr><th style="width:60px">判定</th><th>項目</th><th>状態</th></tr></thead>
+      <tbody>
+      {% for c in d.quality.checks %}
+        <tr>
+          <td style="text-align:center">
+            {% if c.judgement == 'ng' %}<span style="color:var(--g-error);font-weight:bold">×</span>
+            {% elif c.judgement == 'warn' %}<span style="color:var(--g-warn);font-weight:bold">△</span>
+            {% elif c.judgement == 'unverified' %}<span class="small">未確認</span>
+            {% else %}<span style="color:var(--g-ok, #2e7d32)">○</span>{% endif %}
+          </td>
+          <td style="font-size:12px">{{ c.label }}</td>
+          <td class="small">{{ c.state }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="small" style="margin-top:6px;color:var(--g-text-muted)">
+      ○は記載した確認範囲で問題を検出しなかった状態（実操作での動作確認を終えた意味ではありません）。
+      △は要確認、×は根拠のある不備、未確認はデータ未取得・判定不能です。「対象なし」は状態欄に明記します。
+    </p>
+  </details>
+  {% else %}
+  <h2>🔍 データ品質チェック</h2>
+  <p class="small">未実施です。「データ更新」で再収集すると、404流入・個人情報のURL混入・基盤タグの発火漏れ・
+    イベント作成ルールの重複・海外からの機械的アクセスなど17項目を検査します。</p>
+  {% endif %}
+</div>
 
 <div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid #6c5ce7">
   <h2 style="color:#6c5ce7;border-bottom-color:#e8e2ff">🤖 AIで分析・アクションプラン生成</h2>
@@ -361,6 +420,59 @@ renderResult({{ d.latest_ai_run.parsed | tojson }});
   {% else %}<p class="small">データなし</p>{% endif %}
 </div>
 
+<div class="card card-section" id="sec-settings" style="margin-top:16px">
+  <h2>計測設定（追加取得）</h2>
+  {% if d.retention or d.enhanced_measurement or d.event_create_rules or d.ads_links %}
+    <table>
+      <tbody>
+      <tr><th style="width:180px">データ保持期間</th>
+        <td class="small">
+          {% if d.retention and d.retention.ok %}
+            {{ {'FOURTEEN_MONTHS': '14ヶ月（上限）', 'TWO_MONTHS': '2ヶ月（既定のまま）'}.get(d.retention.event_data_retention, d.retention.event_data_retention) }}
+          {% else %}未確認（取得失敗）{% endif %}
+        </td></tr>
+      <tr><th>Google広告リンク</th>
+        <td class="small">{{ d.ads_links|length if d.ads_links is defined else '未確認' }}件
+          {% if d.ads_links %}（{{ d.ads_links|map(attribute='customer_id')|join('、') }}）{% endif %}
+        </td></tr>
+      <tr><th>拡張計測</th>
+        <td class="small">
+          {% if d.enhanced_measurement %}
+            {% for em in d.enhanced_measurement %}
+              {% if em.ok %}
+                {{ em.stream_display_name or 'ストリーム' }}:
+                {% if not em.stream_enabled %}<span class="alert-warn">無効</span>
+                {% else %}
+                  {% for key, label in [('scrolls_enabled','スクロール'),('outbound_clicks_enabled','離脱クリック'),('site_search_enabled','サイト内検索'),('video_engagement_enabled','動画'),('file_downloads_enabled','ファイルDL'),('page_changes_enabled','ページ変更'),('form_interactions_enabled','フォーム操作')] %}
+                    <span class="badge" style="{{ 'opacity:.35' if not em[key] }}">{{ label }}</span>
+                  {% endfor %}
+                {% endif %}<br>
+              {% else %}取得失敗（{{ (em.error or '')[:60] }}）<br>{% endif %}
+            {% endfor %}
+          {% else %}Webストリームなし（対象なし）{% endif %}
+        </td></tr>
+      </tbody>
+    </table>
+    {% set all_rules = [] %}
+    {% for entry in d.event_create_rules or [] %}{% for r in entry.rules or [] %}{% if all_rules.append(r) %}{% endif %}{% endfor %}{% endfor %}
+    <h3 style="font-size:13px;margin:12px 0 6px">イベント作成ルール（{{ all_rules|length }}件）</h3>
+    {% if all_rules %}
+    <table>
+      <thead><tr><th>生成イベント</th><th>条件</th></tr></thead>
+      <tbody>
+      {% for r in all_rules %}
+        <tr><td>{{ r.destination_event }}</td>
+          <td class="small">{% for c in r.event_conditions %}{{ c.field }} {{ c.comparison_type }} <code>{{ c.value }}</code>{% if c.negated %}（否定）{% endif %}{% if not loop.last %} ／ {% endif %}{% endfor %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="small" style="color:var(--g-text-muted)">GTMにもgtagにも現れない定義のため、キーイベントの定義元を探すときはここも確認。同一条件の重複は品質チェックが検出します。</p>
+    {% else %}<p class="small">なし（GA4管理画面の「イベントを作成」で作られた定義はありません）</p>{% endif %}
+  {% else %}
+    <p class="small">未取得です。「データ更新」で再収集すると、データ保持期間・拡張計測・イベント作成ルール・Google広告リンクを取得します。</p>
+  {% endif %}
+</div>
+
 <div class="card card-section" id="sec-roles" style="margin-top:16px">
   <h2>権限（自分のロール）</h2>
   {% if d.access_bindings %}
@@ -371,6 +483,21 @@ renderResult({{ d.latest_ai_run.parsed | tojson }});
   {% else %}
     <p class="small">accessBindings APIで取得できませんでした（プロパティのAdmin権限が必要）。</p>
   {% endif %}
+</div>
+
+<div class="card card-section" id="sec-manual" style="margin-top:16px">
+  <h2>🖐 管理画面での目視確認チェックリスト（{{ manual_checks|length }}項目）</h2>
+  <p class="small" style="margin:4px 0 8px">APIから取得できない・データからは原理的に判定できない確認事項です。
+    「未実装」と混同しないよう、機械化していない理由も添えています。</p>
+  <table>
+    <thead><tr><th style="width:80px">領域</th><th style="width:220px">項目</th><th>確認すること</th><th>なぜ機械化していないか</th></tr></thead>
+    <tbody>
+    {% for m in manual_checks %}
+      <tr><td class="small">{{ m.area }}</td><td style="font-size:12px"><b>{{ m.title }}</b></td>
+        <td class="small">{{ m.what }}</td><td class="small" style="color:var(--g-text-muted)">{{ m.why }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
 </div>
 
 

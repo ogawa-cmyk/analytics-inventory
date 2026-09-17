@@ -146,7 +146,7 @@ CONTS = [
     # C4: UA系タグ残存 → B (live付き: ua=6, paused=4/12=33%)
     {"auth_email":"tanaka@demo.example.com","account_id":"DM-ACCOUNT-01","account_name":"株式会社デモ小売 GTM",
      "container_id":"GTM-DEMO04","public_id":"GTM-DEMO04","name":"UA系タグ残存コンテナ",
-     "usage_context":["WEB"],"tag_count":12,"trigger_count":6,"variable_count":8,
+     "usage_context":["WEB"],"tag_count":15,"trigger_count":6,"variable_count":8,
      "version_id":"7","ga4_measurement_ids":["G-EC12345"],"domain_name":["example-ec.co.jp"],
      "collected_at":COLLECTED},
     # C5: GA4未連携（旧運用） → C (live無し, version無し, MID無し, tags=5)
@@ -319,11 +319,23 @@ GTM_LIVE = {
         "trigger": _mk_triggers(5),
         "variable": _mk_vars(6),
     },
-    "GTM-DEMO04": {  # UA残存: B → ga4config=0, ua=6, paused=4/12
+    "GTM-DEMO04": {  # UA残存: B → ga4config=0, ua=6, paused=4/12 + タグ品質検出のデモ
         "path": "accounts/DM01/containers/DEMO04/versions/7",
         "accountId": "DM01", "containerId": "DEMO04", "containerVersionId": "7",
         "name": "UA系タグ残存 v7",
-        "tag": _mk_tags(0, 2, 6, 0, 4, 12),
+        "tag": _mk_tags(0, 2, 6, 0, 4, 12) + [
+            # 広告CVラベル重複（多重計上）のデモ: 同一ID・ラベルの2本
+            {"tagId": "90", "name": "広告CV_サイト全体", "type": "awct",
+             "parameter": [{"key": "conversionId", "value": "111222333"},
+                            {"key": "conversionLabel", "value": "AbCdEfDemo"}]},
+            {"tagId": "91", "name": "広告CV_商品ページ", "type": "awct",
+             "parameter": [{"key": "conversionId", "value": "111222333"},
+                            {"key": "conversionLabel", "value": "AbCdEfDemo"}]},
+            # カスタムHTML内の旧GA残存のデモ（タグ種別では html としか見えない）
+            {"tagId": "92", "name": "旧GA計測（HTML直書き）", "type": "html",
+             "parameter": [{"key": "html",
+                             "value": "<script>var _gaq=_gaq||[];_gaq.push(['_setAccount','UA-1234567-8']);</script>"}]},
+        ],
         "trigger": _mk_triggers(6),
         "variable": _mk_vars(8),
     },
@@ -389,6 +401,109 @@ PROPERTY_DETAILS = {
     p["property_id"]: _mk_property_detail(p, _STREAM_URIS.get(p["property_id"]))
     for p in PROPS
 }
+
+# ── データ品質チェックのデモ（quality.py の実コードで生成する） ──
+# P1(EC本番)=全チェック○の例、P3(メディアブログ)=検出ありの例。他は「未実施」の表示例になる。
+import quality as _quality  # noqa: E402
+
+
+def _demo_quality(pid, **datasets):
+    d = PROPERTY_DETAILS[pid]
+    d.update(datasets)
+    d["summary"]["collected"] = {k: True for k in _quality.DATASET_LABELS}
+    d["summary"]["retention_event_data"] = (datasets.get("retention") or {}).get("event_data_retention")
+    d["summary"]["ads_link_count"] = len(datasets.get("ads_links") or [])
+    d["summary"]["event_create_rule_count"] = sum(
+        len(e.get("rules") or []) for e in datasets.get("event_create_rules") or [])
+    q = _quality.run_property_checks(d)
+    d["quality"] = q
+    d["summary"]["quality"] = {**q["counts"], "unverified": q["unverified"]}
+
+
+_demo_quality(
+    "300000001",  # EC本番: 健全（全チェック○）
+    events=[
+        {"event_name": "page_view", "event_count": 620000, "total_users": 98000},
+        {"event_name": "session_start", "event_count": 182000, "total_users": 96000},
+        {"event_name": "user_engagement", "event_count": 410000, "total_users": 90000},
+        {"event_name": "view_item", "event_count": 250000, "total_users": 70000},
+        {"event_name": "add_to_cart", "event_count": 48000, "total_users": 21000},
+        {"event_name": "begin_checkout", "event_count": 21000, "total_users": 12000},
+        {"event_name": "view_search_results", "event_count": 33000, "total_users": 18000},
+        {"event_name": "purchase", "event_count": 8200, "total_users": 7600},
+    ],
+    totals_30d={"ok": True, "sessions": 185000},
+    pages={"ok": True, "rows": [
+        {"page_path": "/", "page_title": "デモEC | 公式通販", "views": 210000, "sessions": 150000},
+        {"page_path": "/products/", "page_title": "商品一覧 | デモEC", "views": 180000, "sessions": 90000},
+        {"page_path": "/cart/", "page_title": "カート | デモEC", "views": 52000, "sessions": 40000},
+    ]},
+    traffic={"ok": True, "rows": [
+        {"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 98000},
+        {"source": "google", "medium": "cpc", "channel_group": "Paid Search", "sessions": 45000},
+        {"source": "(direct)", "medium": "(none)", "channel_group": "Direct", "sessions": 40000},
+    ]},
+    countries={"ok": True, "rows": [
+        {"country": "Japan", "sessions": 180000, "key_events": 8100,
+         "engagement_duration": 14500000, "bounce_rate": 0.36},
+        {"country": "United States", "sessions": 3000, "key_events": 40,
+         "engagement_duration": 210000, "bounce_rate": 0.52},
+    ]},
+    event_create_rules=[{"ok": True, "stream": "properties/300000001/dataStreams/10001", "rules": []}],
+    retention={"ok": True, "event_data_retention": "FOURTEEN_MONTHS"},
+    enhanced_measurement=[{"ok": True, "stream": "properties/300000001/dataStreams/10001",
+                            "stream_display_name": "ECサイト本番 ウェブストリーム",
+                            "stream_enabled": True, "scrolls_enabled": True,
+                            "outbound_clicks_enabled": True, "site_search_enabled": True,
+                            "video_engagement_enabled": False, "file_downloads_enabled": True,
+                            "page_changes_enabled": True, "form_interactions_enabled": True}],
+    ads_links=[{"name": "properties/300000001/googleAdsLinks/1", "customer_id": "123-456-7890",
+                "ads_personalization_enabled": True}],
+)
+
+_demo_quality(
+    "300000003",  # メディアブログ: 検出ありの例（404流入・URL分裂・日本語イベント名・サイト内UTM・保持期間・ルール重複）
+    events=[
+        {"event_name": "page_view", "event_count": 41000, "total_users": 8200},
+        {"event_name": "session_start", "event_count": 9600, "total_users": 8100},
+        {"event_name": "scroll_50", "event_count": 12000, "total_users": 5100},
+        {"event_name": "記事シェア", "event_count": 850, "total_users": 640},
+        {"event_name": "newsletter_signup", "event_count": 120, "total_users": 118},
+    ],
+    totals_30d={"ok": True, "sessions": 10000},
+    pages={"ok": True, "rows": (
+        [{"page_path": f"/2023-0{i%9+1}/old-article-{i}/",
+          "page_title": "ページが見つかりませんでした | デモブログ",
+          "views": 130, "sessions": 110} for i in range(11)] + [
+        {"page_path": "/", "page_title": "デモブログ", "views": 9000, "sessions": 7000},
+        {"page_path": "/about", "page_title": "運営者情報", "views": 380, "sessions": 300},
+        {"page_path": "/about/index.html", "page_title": "運営者情報", "views": 90, "sessions": 70},
+    ])},
+    traffic={"ok": True, "rows": [
+        {"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 8600},
+        {"source": "site_banner", "medium": "popup", "channel_group": "Unassigned", "sessions": 420},
+    ]},
+    countries={"ok": True, "rows": [
+        {"country": "Japan", "sessions": 9800, "key_events": 118,
+         "engagement_duration": 690000, "bounce_rate": 0.58},
+    ]},
+    event_create_rules=[{"ok": True, "stream": "properties/300000003/dataStreams/10003", "rules": [
+        {"destination_event": "cv_signup_top", "source_copy_parameters": True,
+         "event_conditions": [{"field": "page_location", "comparison_type": "CONTAINS",
+                                "value": "/thanks", "negated": False}]},
+        {"destination_event": "cv_signup_article", "source_copy_parameters": True,
+         "event_conditions": [{"field": "page_location", "comparison_type": "CONTAINS",
+                                "value": "/thanks", "negated": False}]},
+    ]}],
+    retention={"ok": True, "event_data_retention": "TWO_MONTHS"},
+    enhanced_measurement=[{"ok": True, "stream": "properties/300000003/dataStreams/10003",
+                            "stream_display_name": "メディアブログ ウェブストリーム",
+                            "stream_enabled": True, "scrolls_enabled": True,
+                            "outbound_clicks_enabled": True, "site_search_enabled": False,
+                            "video_engagement_enabled": False, "file_downloads_enabled": True,
+                            "page_changes_enabled": False, "form_interactions_enabled": False}],
+    ads_links=[],
+)
 
 # ── SC サイト詳細（sc_details/*.json）──
 def _mk_sc_queries(n, site_domain):

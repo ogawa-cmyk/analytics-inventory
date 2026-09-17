@@ -273,8 +273,12 @@ def property_detail(pid: str):
     detail["ai_templates"] = ai_prompts.list_for_property(detail)
     detail["latest_ai_run"] = ai_executor.latest_run(pid)
     detail["ai_runs"] = ai_executor.list_runs(pid)
+    import manual_checks
+    import quality as quality_mod
     return render_template("property.html", d=detail, pid=pid, inv=inv,
-                           ai_services=ai_prompts.AI_SERVICES)
+                           ai_services=ai_prompts.AI_SERVICES,
+                           manual_checks=manual_checks.PROPERTY_MANUAL_CHECKS,
+                           judgement_labels=quality_mod.JUDGEMENT_LABELS)
 
 
 @app.route("/api/property/<pid>/ai_analyze", methods=["POST"])
@@ -481,6 +485,46 @@ def api_alerts(kind: str):
                     "link": f"/property/{p.get('property_id')}",
                     "unmatched_mids": unrelated,
                 })
+    elif kind == "quality":
+        for p in props:
+            q = p.get("quality") or {}
+            n_err = q.get("error") or 0
+            n_warn = q.get("warn") or 0
+            if n_err + n_warn == 0:
+                continue
+            items.append({
+                "kind": "property", "id": p.get("property_id"),
+                "name": p.get("display_name"), "subtitle": p.get("auth_email"),
+                "grade": p.get("health_grade"),
+                "link": f"/property/{p.get('property_id')}#sec-quality",
+                "extra": f"重大{n_err}件 / 要確認{n_warn}件",
+            })
+        items.sort(key=lambda i: i.get("extra", ""), reverse=True)
+    elif kind == "dup_ad_labels":
+        for c in conts:
+            groups = (c.get("_score_summary") or {}).get("awct_dup_groups") or []
+            if not groups:
+                continue
+            names = "、".join(groups[0].get("tags", [])[:3])
+            items.append({
+                "kind": "container", "id": c.get("container_id"),
+                "name": c.get("name"), "subtitle": f"{c.get('account_name')} / {c.get('auth_email')}",
+                "grade": c.get("health_grade"),
+                "link": f"/gtm/{c.get('container_id')}/tag",
+                "extra": f"{len(groups)}組重複（{names}）",
+            })
+    elif kind == "ua_in_html":
+        for c in conts:
+            tags = (c.get("_score_summary") or {}).get("html_ua_tags") or []
+            if not tags:
+                continue
+            items.append({
+                "kind": "container", "id": c.get("container_id"),
+                "name": c.get("name"), "subtitle": f"{c.get('account_name')} / {c.get('auth_email')}",
+                "grade": c.get("health_grade"),
+                "link": f"/gtm/{c.get('container_id')}/tag",
+                "extra": f"{len(tags)}本（{'、'.join(tags[:3])}）",
+            })
 
     return jsonify({"kind": kind, "count": len(items), "items": items})
 
