@@ -31,7 +31,7 @@ import health
 import notifications
 import thresholds
 import update_check
-from config import DEMO_MODE, DETAILS_DIR, GITHUB_REPO, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT
+from config import DEMO_MODE, DETAILS_DIR, GITHUB_REPO, GTM_DETAILS_DIR, SC_DETAILS_DIR, INVENTORY_PATH, SERVER_PORT, SITE_SCANS_DIR
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
@@ -295,6 +295,49 @@ def api_property_ai_analyze(pid: str):
     linked = cross["property_to_containers"].get(pid, [])
     result = ai_executor.analyze_property(detail, linked, model=model, extra_instructions=extra)
     return jsonify(result)
+
+
+@app.route("/api/property/<pid>/site_scan", methods=["POST", "GET"])
+def api_site_scan(pid: str):
+    """公開実装スキャン。POSTで実行（対象サイトへHTTPアクセスが発生）、GETで保存済み結果を返す。
+
+    スキャン先はプロパティのWebストリームに登録された default_uri のみ
+    （任意URLを受け付けない — 保存済みの自分の管理対象だけを見る）。
+    """
+    if not _safe_id(pid):
+        abort(404)
+    scan_path = SITE_SCANS_DIR / f"{pid}.json"
+    if request.method == "GET":
+        if not scan_path.exists():
+            return jsonify({"exists": False})
+        return jsonify({"exists": True, **json.loads(scan_path.read_text(encoding="utf-8"))})
+
+    if DEMO_MODE:
+        return jsonify({"error": "デモモードでは外部サイトへのアクセスを行いません"}), 403
+    detail_path = DETAILS_DIR / f"{pid}.json"
+    if not detail_path.exists():
+        abort(404)
+    detail = json.loads(detail_path.read_text(encoding="utf-8"))
+    url = next((s.get("default_uri") for s in detail.get("streams") or []
+                if s.get("default_uri")), None)
+    if not url:
+        return jsonify({"error": "WebストリームにサイトURL（default_uri）が登録されていません"}), 400
+
+    from collectors import site_scan as site_scan_mod
+    inv = _load_inventory()
+    known_gtm = [c.get("public_id") for c in inv.get("gtm_containers", []) if c.get("public_id")]
+    known_mids = (detail.get("summary") or {}).get("measurement_ids") or []
+    try:
+        scan = site_scan_mod.scan_site(url)
+    except Exception as e:
+        return jsonify({"error": f"サイトの取得に失敗しました: {type(e).__name__}: {str(e)[:120]}"}), 502
+    result = {
+        "scanned_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "scan": scan,
+        "analysis": site_scan_mod.analyze(scan, known_mids, known_gtm),
+    }
+    scan_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"exists": True, **result})
 
 
 @app.route("/api/property/<pid>/ai_run/<stamp>")

@@ -19,6 +19,7 @@ config.DETAILS_DIR      = _DEMO / "details"
 config.GTM_DETAILS_DIR  = _DEMO / "gtm_details"
 config.SC_DETAILS_DIR   = _DEMO / "sc_details"
 config.INVENTORY_PATH   = _DEMO / "inventory.json"
+config.SITE_SCANS_DIR   = _DEMO / "site_scans"
 config.INDEXER_LOCK_PATH= _DEMO / "indexer.lock"
 config.SERVER_PORT      = 8790
 config.DEMO_MODE        = True   # 書き込み系操作（再収集・通知設定）を無効化

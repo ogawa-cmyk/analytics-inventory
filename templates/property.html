@@ -11,6 +11,7 @@
     <h3>このページの目次</h3>
     <a href="#sec-overview">概要・アラート</a>
     <a href="#sec-quality">🔍 品質チェック</a>
+    <a href="#sec-scan">🌐 公開実装</a>
     <a href="#sec-ai">🤖 AI分析</a>
     <a href="#sec-diff">📈 前回比差分</a>
     <a href="#sec-notes">🏷 タグ・メモ</a>
@@ -100,6 +101,84 @@
     イベント作成ルールの重複・海外からの機械的アクセスなど17項目を検査します。</p>
   {% endif %}
 </div>
+
+<div class="card card-section" id="sec-scan" style="margin-bottom:14px">
+  <h2>🌐 公開実装スキャン</h2>
+  <p class="small" style="margin:4px 0 8px">
+    Webストリームに登録されたサイトの公開HTMLと公開gtm.jsを読み、実際に配信されている計測実装
+    （GTMコンテナ・GA4/UA/広告ID・タグ構成）を確認します。<b>GTMの閲覧権限が無いコンテナや
+    直書きのgtag、想定外の測定IDもここで見つかります</b>（タグ名は公開情報に含まれないため出ません）。
+  </p>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+    <button class="btn" id="scan-btn" onclick="runSiteScan()" {% if demo_mode %}disabled title="デモモードでは実行できません"{% endif %}>▶ スキャン実行</button>
+    <span class="small" id="scan-status"></span>
+  </div>
+  <div id="scan-result"></div>
+</div>
+
+<script>
+async function loadSiteScan(){
+  try {
+    const r = await fetch(`/api/property/{{ pid }}/site_scan`);
+    const data = await r.json();
+    if(data.exists) renderSiteScan(data);
+  } catch(e) {}
+}
+async function runSiteScan(){
+  const btn = document.getElementById('scan-btn');
+  const st = document.getElementById('scan-status');
+  btn.disabled = true; st.textContent = 'サイトを読み取り中…（数秒〜十数秒）';
+  try {
+    const r = await fetch(`/api/property/{{ pid }}/site_scan`, {method:'POST'});
+    const data = await r.json();
+    if(data.error){ st.textContent = data.error; }
+    else { st.textContent = ''; renderSiteScan(data); }
+  } catch(e){ st.textContent = '実行に失敗しました: ' + e.message; }
+  btn.disabled = false;
+}
+function _idList(ids, cls){
+  return (ids||[]).map(x => `<span class="badge ${cls||''}">${escapeHtml(x)}</span>`).join(' ') || '<span class="small">なし</span>';
+}
+function renderSiteScan(data){
+  const a = data.analysis || {};
+  const scan = data.scan || {};
+  let h = `<p class="small">スキャン日時: ${escapeHtml((data.scanned_at||'').replace('T',' ').slice(0,19))} ・ 対象: ${escapeHtml(scan.url||'')}</p>`;
+  h += '<table><tbody>';
+  h += `<tr><th style="width:230px">登録済みMIDの配信確認</th><td class="small">${_idList(a.expected_ga4_found)}`;
+  if((a.expected_ga4_missing||[]).length){
+    h += `<br><span class="alert-warn">⚠ 配信を確認できなかった登録済みMID: ${_idList(a.expected_ga4_missing)}（JS描画後にのみ挿入される場合もあります）</span>`;
+  }
+  h += '</td></tr>';
+  if((a.unexpected_ga4||[]).length){
+    h += `<tr><th>想定外のGA4測定ID</th><td class="small"><span class="alert-warn">⚠ ${_idList(a.unexpected_ga4)}</span><br>このプロパティに登録の無いMIDです。別プロパティの正当な併用の場合もあるため、宛先を確認してください。</td></tr>`;
+  }
+  if((a.ua_ids_found||[]).length){
+    h += `<tr><th>旧UAの残存</th><td class="small"><span class="alert-warn">⚠ ${_idList(a.ua_ids_found)}</span> UAは2024年7月に計測停止済みです。</td></tr>`;
+  }
+  h += `<tr><th>GTMコンテナ</th><td class="small">権限あり: ${_idList(a.known_gtm_containers)}`;
+  if((a.unknown_gtm_containers||[]).length){
+    h += `<br><span class="alert-warn">⚠ インベントリに無いコンテナ: ${_idList(a.unknown_gtm_containers)}</span>（閲覧権限をもらうと詳細を管理できます）`;
+  }
+  h += '</td></tr>';
+  if((a.ads_ids_found||[]).length){
+    h += `<tr><th>広告タグ</th><td class="small">${_idList(a.ads_ids_found)}</td></tr>`;
+  }
+  h += '</tbody></table>';
+  for(const c of (scan.containers||[])){
+    h += `<h3 style="font-size:13px;margin:12px 0 4px">公開コンテナ ${escapeHtml(c.container_id)}（v${escapeHtml(String(c.version||''))} ・ タグ${c.tag_total}本）</h3>`;
+    h += '<p class="small">' + Object.entries(c.type_counter||{}).map(([k,v])=>`${escapeHtml(k)}×${v}`).join(' ／ ') + '</p>';
+    const dup = Object.entries(c.duplicate_fire_events||{});
+    if(dup.length){
+      h += `<p class="small alert-warn">⚠ 同一dataLayerイベントで複数の計測タグが発火: ${dup.map(([ev,n])=>`<code>${escapeHtml(ev)}</code>(${n}本)`).join('、')} — 多重計上の候補</p>`;
+    }
+  }
+  if((scan.container_errors||[]).length){
+    h += `<p class="small">取得できなかったコンテナ: ${scan.container_errors.map(e=>escapeHtml(e.container_id)).join('、')}</p>`;
+  }
+  document.getElementById('scan-result').innerHTML = h;
+}
+loadSiteScan();
+</script>
 
 <div class="card card-section" id="sec-ai" style="margin-bottom:14px;border-left:3px solid #6c5ce7">
   <h2 style="color:#6c5ce7;border-bottom-color:#e8e2ff">🤖 AIで分析・アクションプラン生成</h2>

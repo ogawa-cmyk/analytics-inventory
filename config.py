@@ -10,11 +10,12 @@ DATA_DIR = ROOT / "data"
 DETAILS_DIR = DATA_DIR / "details"
 GTM_DETAILS_DIR = DATA_DIR / "gtm_details"
 SC_DETAILS_DIR = DATA_DIR / "sc_details"
+SITE_SCANS_DIR = DATA_DIR / "site_scans"
 INVENTORY_PATH = DATA_DIR / "inventory.json"
 INDEXER_LOCK_PATH = DATA_DIR / "indexer.lock"
 CLIENT_SECRET_PATH = ROOT / "client_secret.json"
 
-for p in (TOKENS_DIR, DATA_DIR, DETAILS_DIR, GTM_DETAILS_DIR, SC_DETAILS_DIR):
+for p in (TOKENS_DIR, DATA_DIR, DETAILS_DIR, GTM_DETAILS_DIR, SC_DETAILS_DIR, SITE_SCANS_DIR):
     p.mkdir(parents=True, exist_ok=True)
 
 SCOPES = [
