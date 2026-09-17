@@ -5,6 +5,9 @@ Score is 0-100 based on weighted signals. Alerts are issues that demand attentio
 アラート判定の一部閾値は thresholds.py でカスタマイズ可能。
 """
 from __future__ import annotations
+
+import re
+from collections import defaultdict
 from typing import Optional
 
 import thresholds as _th
@@ -71,25 +74,53 @@ def score_property(p: dict) -> dict:
 
 
 def detect_alerts(p: dict) -> list[dict]:
-    """Return list of alerts {level: 'warn'|'error'|'info', message: str} for a property."""
+    """Return list of alerts {level: 'warn'|'error'|'info', code: str, message: str} for a property.
+
+    code は指摘の種類を表す安定した識別子（件数など実行のたびに変わる値は含めない）。
+    message は表示用で、件数を含むため同一性の判定には使わないこと。
+    """
     out = []
     if p.get("data_api_ok") is False:
-        out.append({"level": "warn", "message": "Data APIエラー: " + (p.get("data_api_error") or "")[:80]})
+        out.append({"level": "warn", "code": "ga4.api_err",
+                    "message": "Data APIエラー: " + (p.get("data_api_error") or "")[:80]})
     elif p.get("is_tracked") is False:
-        out.append({"level": "error", "message": "直近7日間データなし（計測停止の可能性）"})
+        out.append({"level": "error", "code": "ga4.untracked",
+                    "message": "直近7日間データなし（計測停止の可能性）"})
 
     if (p.get("key_event_count") or 0) == 0:
-        out.append({"level": "warn", "message": "キーイベント未設定"})
+        out.append({"level": "warn", "code": "ga4.no_ke", "message": "キーイベント未設定"})
 
     if (p.get("stream_count") or 0) == 0:
-        out.append({"level": "error", "message": "データストリーム未設定"})
+        out.append({"level": "error", "code": "ga4.no_streams", "message": "データストリーム未設定"})
 
     cd = p.get("custom_dimension_count") or 0
     if cd > _th.get()["cd_warn"]:
-        out.append({"level": "warn", "message": f"カスタムディメンションが{cd}件と過多"})
+        out.append({"level": "warn", "code": "ga4.cd_overflow",
+                    "message": f"カスタムディメンションが{cd}件と過多"})
 
     if not p.get("my_roles"):
-        out.append({"level": "info", "message": "権限不明（accessBindings取得失敗）"})
+        out.append({"level": "info", "code": "ga4.roles_unknown",
+                    "message": "権限不明（accessBindings取得失敗）"})
+
+    # データ品質チェック（quality.py。収集時に計算され summary に件数が入る）。
+    # 「未実施」「実行失敗」は黙って0件扱いにせず、その事実を info で残す。
+    if "quality" not in p:
+        out.append({"level": "info", "code": "ga4.quality_pending",
+                    "message": "データ品質チェック未実施（次回のデータ再収集で実行されます）"})
+    elif p.get("quality") is None:
+        out.append({"level": "info", "code": "ga4.quality_failed",
+                    "message": "データ品質チェックが実行できなかった（indexer.log を確認）"})
+    else:
+        q = p["quality"]
+        if q.get("error"):
+            out.append({"level": "error", "code": "ga4.quality_error",
+                        "message": f"データ品質の重大な検出が{q['error']}件（詳細ページの品質チェック参照）"})
+        if q.get("warn"):
+            out.append({"level": "warn", "code": "ga4.quality_warn",
+                        "message": f"データ品質の要確認が{q['warn']}件（詳細ページの品質チェック参照）"})
+        if q.get("unverified") and p.get("is_tracked"):
+            out.append({"level": "info", "code": "ga4.quality_unverified",
+                        "message": f"品質チェック{q['unverified']}項目が未確認（データ未取得）"})
 
     return out
 
@@ -98,7 +129,8 @@ def alert_count_summary(properties: list[dict]) -> dict:
     """Aggregate alert counts across all properties (監視除外 ann_excluded はスキップ)."""
     error_props = 0
     warn_props = 0
-    issues = {"untracked": 0, "no_streams": 0, "no_ke": 0, "cd_overflow": 0, "api_err": 0}
+    issues = {"untracked": 0, "no_streams": 0, "no_ke": 0, "cd_overflow": 0, "api_err": 0,
+              "quality": 0}
     cd_warn = _th.get()["cd_warn"]
     for p in properties:
         if p.get("ann_excluded"):
@@ -119,6 +151,9 @@ def alert_count_summary(properties: list[dict]) -> dict:
             issues["cd_overflow"] += 1
         if p.get("data_api_ok") is False:
             issues["api_err"] += 1
+        q = p.get("quality") or {}
+        if (q.get("error") or 0) + (q.get("warn") or 0) > 0:
+            issues["quality"] += 1
     return {"error_props": error_props, "warn_props": warn_props, "issues": issues}
 
 
@@ -150,6 +185,80 @@ LEGACY_TAG_TYPES = {
 # GA4 tag types
 GA4_TAG_TYPES = {"gaawc", "gaawe"}
 
+# カスタムHTML内の旧GA（Universal Analytics 世代）参照。
+# タグの type だけでは拾えない「HTML直書きのUA送信」を検出する。
+# "ga.js" のような短い部分一致は誤検出するため、具体的な形に限定する
+_UA_IN_HTML_RE = re.compile(
+    r"UA-\d{4,}-\d+"                                  # UA測定ID
+    r"|google-analytics\.com/(?:analytics|ga)\.js"    # 旧ライブラリの読み込み
+    r"|\b_gaq\b"                                      # ga.js世代のグローバル
+    r"|ga\(\s*['\"]create['\"]"                       # analytics.js世代の初期化
+)
+_VAR_REF_RE = re.compile(r"^\{\{(.+)\}\}$")
+
+
+def _resolve_constant(value, variables_by_name: dict) -> str | None:
+    """タグのパラメータ値を定数まで解決する。
+
+    `{{変数名}}` 参照は、その変数が定数（type "c"）のときだけ値を返す。
+    ルックアップテーブル等の実行時に変わる変数は「同じ」と決め打ちできないため
+    None を返し、呼び出し側は「判定不能」として ○ と混同しない。
+    """
+    v = str(value or "")
+    m = _VAR_REF_RE.fullmatch(v)
+    if not m:
+        return v or None
+    var = variables_by_name.get(m.group(1))
+    if not var or (var.get("type") or "").lower() != "c":
+        return None
+    for p in var.get("parameter", []) or []:
+        if p.get("key") == "value":
+            val = str(p.get("value") or "")
+            return None if _VAR_REF_RE.search(val) else (val or None)
+    return None
+
+
+def _analyze_tag_quality(tags: list, variables: list) -> dict:
+    """タグ品質の追加検出（広告CVラベル重複・カスタムHTML内の旧GA参照）。
+
+    判定ロジックは super-access-analytics（MIT License, TigerMonday Inc.）の
+    計測チェック実装を GTM API の live version 形式へ移植したもの。
+    """
+    variables_by_name = {v.get("name"): v for v in variables if v.get("name")}
+    groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+    unresolved: list[str] = []
+    html_ua: list[str] = []
+    for t in tags:
+        ttype = (t.get("type") or "").lower()
+        if t.get("paused"):
+            continue
+        params = {p.get("key"): p.get("value") for p in t.get("parameter", []) or []}
+        if ttype == "awct":
+            raw_id = params.get("conversionId")
+            raw_label = params.get("conversionLabel")
+            if not raw_id or not raw_label:
+                continue  # 片方欠けは組み合わせが作れない（ここでは重複だけを見る）
+            cid = _resolve_constant(raw_id, variables_by_name)
+            label = _resolve_constant(raw_label, variables_by_name)
+            if cid is None or label is None:
+                unresolved.append(t.get("name", ""))
+                continue
+            groups[(cid, label)].append(t.get("name", ""))
+        elif ttype == "html":
+            if _UA_IN_HTML_RE.search(str(params.get("html") or "")):
+                html_ua.append(t.get("name", ""))
+    dup_groups = [
+        {"conversion_id": cid, "label": label, "tags": sorted(names)}
+        for (cid, label), names in groups.items() if len(names) >= 2
+    ]
+    # APIの返却順に依存しないよう固定してから返す（並びが変わると同じ検出が別物に見える）
+    dup_groups.sort(key=lambda g: (g["conversion_id"], g["label"]))
+    return {
+        "awct_dup_groups": dup_groups,
+        "awct_unresolved": sorted(set(unresolved)),
+        "html_ua_tags": sorted(set(html_ua)),
+    }
+
 
 def _summarize_live(live: dict | None) -> dict:
     """Aggregate counts from live version JSON for scoring."""
@@ -159,6 +268,7 @@ def _summarize_live(live: dict | None) -> dict:
             "ua_count": 0, "html_count": 0, "ga4_config_count": 0, "ga4_event_count": 0,
             "trigger_total": 0, "variable_total": 0,
             "type_counter": {},
+            "awct_dup_groups": [], "awct_unresolved": [], "html_ua_tags": [],
         }
     tags = live.get("tag") or []
     triggers = live.get("trigger") or []
@@ -193,6 +303,7 @@ def _summarize_live(live: dict | None) -> dict:
         "trigger_total": len(triggers),
         "variable_total": len(variables),
         "type_counter": type_counter,
+        **_analyze_tag_quality(tags, variables),
     }
 
 
@@ -300,31 +411,56 @@ def detect_container_alerts(c: dict, live: dict | None = None) -> list[dict]:
     out = []
     summary = _summarize_live(live)
     if not (c.get("version_id") or summary.get("has_live")):
-        out.append({"level": "error", "message": "公開バージョンが未取得または未公開"})
+        out.append({"level": "error", "code": "gtm.no_version",
+                    "message": "公開バージョンが未取得または未公開"})
     if (c.get("tag_count") or summary.get("tag_total") or 0) == 0:
-        out.append({"level": "error", "message": "タグが0件（稼働していない）"})
+        out.append({"level": "error", "code": "gtm.no_tags",
+                    "message": "タグが0件（稼働していない）"})
     if not (c.get("ga4_measurement_ids") or []):
-        out.append({"level": "warn", "message": "GA4 Measurement IDが紐づいていない"})
+        out.append({"level": "warn", "code": "gtm.no_ga4",
+                    "message": "GA4 Measurement IDが紐づいていない"})
     if summary["has_live"]:
         if summary["ga4_config_count"] == 0 and (c.get("ga4_measurement_ids") or []):
-            out.append({"level": "warn", "message": "GA4設定タグ(gaawc)が存在しない"})
+            out.append({"level": "warn", "code": "gtm.no_config_tag",
+                        "message": "GA4設定タグ(gaawc)が存在しない"})
         if summary["ua_count"] >= _th.get()["ua_warn"]:
-            out.append({"level": "warn", "message": f"レガシーUA系タグが{summary['ua_count']}件残存"})
+            out.append({"level": "warn", "code": "gtm.ua_left",
+                        "message": f"レガシーUA系タグが{summary['ua_count']}件残存"})
         if summary["tag_total"] > 0:
             ratio = summary["tag_paused"] / summary["tag_total"]
             if ratio >= 0.30:
-                out.append({"level": "warn", "message": f"pausedタグが{summary['tag_paused']}件（{round(ratio*100)}%）と多い"})
+                out.append({"level": "warn", "code": "gtm.paused_many",
+                            "message": f"pausedタグが{summary['tag_paused']}件（{round(ratio*100)}%）と多い"})
         if summary["tag_total"] > 400:
-            out.append({"level": "warn", "message": f"タグが{summary['tag_total']}件と過大"})
+            out.append({"level": "warn", "code": "gtm.too_many_tags",
+                        "message": f"タグが{summary['tag_total']}件と過大"})
+        # 広告CVラベルの重複 = 1回の成果が広告側で多重カウントされ、入札の自動調整が
+        # 実際より多い成果数を前提に動く
+        for g in summary["awct_dup_groups"]:
+            out.append({"level": "warn", "code": "gtm.dup_ad_labels",
+                        "message": f"広告CVタグ{len(g['tags'])}本（{'、'.join(g['tags'][:3])}）が"
+                                   f"同一のコンバージョンID・ラベルで発火（多重計上）"})
+        if summary["awct_unresolved"]:
+            names = "、".join(summary["awct_unresolved"][:3])
+            out.append({"level": "info", "code": "gtm.ad_label_unresolved",
+                        "message": f"広告CVタグ{len(summary['awct_unresolved'])}本のID・ラベルが"
+                                   f"変数参照で判定不能（{names}）。重複していないか目視確認"})
+        if summary["html_ua_tags"]:
+            names = "、".join(summary["html_ua_tags"][:3])
+            out.append({"level": "warn", "code": "gtm.ua_in_html",
+                        "message": f"カスタムHTML内に旧GA（UA/analytics.js）への参照が"
+                                   f"{len(summary['html_ua_tags'])}本（{names}）。UAは計測停止済み"})
     if not (c.get("usage_context") or []):
-        out.append({"level": "info", "message": "用途(usage_context)が未設定"})
+        out.append({"level": "info", "code": "gtm.no_usage_context",
+                    "message": "用途(usage_context)が未設定"})
     return out
 
 
 def container_alert_summary(containers: list[dict]) -> dict:
     error_c = 0
     warn_c = 0
-    issues = {"no_tags": 0, "no_ga4": 0, "ua_left": 0, "no_version": 0}
+    issues = {"no_tags": 0, "no_ga4": 0, "ua_left": 0, "no_version": 0,
+              "dup_ad_labels": 0, "ua_in_html": 0}
     ua_warn = _th.get()["ua_warn"]
     for c in containers:
         if c.get("ann_excluded"):
@@ -338,10 +474,15 @@ def container_alert_summary(containers: list[dict]) -> dict:
             issues["no_tags"] += 1
         if not (c.get("ga4_measurement_ids") or []):
             issues["no_ga4"] += 1
-        if c.get("_score_summary", {}).get("ua_count", 0) >= ua_warn:
+        ss = c.get("_score_summary", {})
+        if ss.get("ua_count", 0) >= ua_warn:
             issues["ua_left"] += 1
         if not c.get("version_id"):
             issues["no_version"] += 1
+        if ss.get("awct_dup_groups"):
+            issues["dup_ad_labels"] += 1
+        if ss.get("html_ua_tags"):
+            issues["ua_in_html"] += 1
     return {"error_count": error_c, "warn_count": warn_c, "issues": issues}
 
 
@@ -443,21 +584,28 @@ def score_sc_site(s: dict, has_ga4_link: bool = False) -> dict:
 def detect_sc_alerts(s: dict, has_ga4_link: bool = False) -> list[dict]:
     out = []
     if not s.get("perf_ok"):
-        out.append({"level": "warn", "message": "Search Analytics取得エラー: " + (s.get("perf_error") or "")[:80]})
+        out.append({"level": "warn", "code": "sc.api_err",
+                    "message": "Search Analytics取得エラー: " + (s.get("perf_error") or "")[:80]})
     if (s.get("sitemap_count") or 0) == 0:
-        out.append({"level": "warn", "message": "sitemapが未登録"})
+        out.append({"level": "warn", "code": "sc.no_sitemap", "message": "sitemapが未登録"})
     if (s.get("sitemap_errors") or 0) > 0:
-        out.append({"level": "warn", "message": f"sitemapエラー {s['sitemap_errors']}件"})
+        out.append({"level": "warn", "code": "sc.sitemap_errors",
+                    "message": f"sitemapエラー {s['sitemap_errors']}件"})
     if (s.get("clicks_28d") or 0) == 0 and (s.get("impressions_28d") or 0) == 0:
-        out.append({"level": "error", "message": "直近28日で流入・インプレッション共に0"})
+        out.append({"level": "error", "code": "sc.no_traffic",
+                    "message": "直近28日で流入・インプレッション共に0"})
     elif (s.get("clicks_28d") or 0) == 0 and (s.get("impressions_28d") or 0) > 100:
-        out.append({"level": "warn", "message": f"Imp {s['impressions_28d']:,}あるがClickが0（CTR=0）"})
+        out.append({"level": "warn", "code": "sc.no_clicks",
+                    "message": f"Imp {s['impressions_28d']:,}あるがClickが0（CTR=0）"})
     if (s.get("ctr_28d") or 0) > 0 and (s.get("ctr_28d") or 0) < 0.005 and (s.get("impressions_28d") or 0) > 1000:
-        out.append({"level": "warn", "message": "CTRが0.5%未満（メタ・タイトル要改善）"})
+        out.append({"level": "warn", "code": "sc.low_ctr",
+                    "message": "CTRが0.5%未満（メタ・タイトル要改善）"})
     if (s.get("position_28d") or 0) > 30 and (s.get("impressions_28d") or 0) > 0:
-        out.append({"level": "info", "message": f"平均掲載順位 {s.get('position_28d', 0):.1f} 位"})
+        out.append({"level": "info", "code": "sc.low_position",
+                    "message": f"平均掲載順位 {s.get('position_28d', 0):.1f} 位"})
     if not has_ga4_link:
-        out.append({"level": "info", "message": "GA4プロパティとの自動紐付けなし"})
+        out.append({"level": "info", "code": "sc.no_ga4_link",
+                    "message": "GA4プロパティとの自動紐付けなし"})
     return out
 
 

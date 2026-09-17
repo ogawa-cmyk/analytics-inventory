@@ -42,6 +42,48 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
     ecom = ga4_data.check_ecommerce(creds, pid, ECOMMERCE_EVENTS, days=ECOMMERCE_LOOKBACK_DAYS)
     events = ga4_data.list_events(creds, pid, days=EVENTS_LOOKBACK_DAYS)
 
+    # ── 追加設定（Admin API）。取得失敗は ok=False のまま残し「未確認」として扱う ──
+    retention = ga4_admin.get_data_retention(creds, pname)
+    ads_links = ga4_admin.list_google_ads_links(creds, pname)
+    web_streams = [s for s in streams if s.get("measurement_id")]
+    enhanced = []
+    event_rules = []
+    for s in web_streams:
+        em = ga4_admin.get_enhanced_measurement(creds, s["name"])
+        em["stream"] = s["name"]
+        em["stream_display_name"] = s.get("display_name")
+        enhanced.append(em)
+        ecr = ga4_admin.list_event_create_rules(creds, s["name"])
+        ecr["stream"] = s["name"]
+        event_rules.append(ecr)
+
+    # ── 実績データ（Data API）。未計測プロパティはAPI呼び出しを省略する ──
+    is_tracked = bool(measurement.get("is_tracked"))
+    if is_tracked:
+        totals30 = ga4_data.sessions_total(creds, pid, days=EVENTS_LOOKBACK_DAYS)
+        pages = ga4_data.page_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
+        traffic = ga4_data.traffic_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
+        countries = ga4_data.country_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
+    else:
+        skipped = {"ok": False, "skipped": True, "error": "未計測のため取得を省略", "rows": []}
+        totals30, pages, traffic, countries = dict(skipped), dict(skipped), dict(skipped), dict(skipped)
+
+    # 品質チェックの前提: どのデータセットが実際に取れたか。
+    # 「取れていない」を「問題なし」と混同しないため、判定側はこのフラグを見て未確認に倒す
+    events_ok = not (events and isinstance(events[0], dict) and "_error" in events[0])
+    collected = {
+        "events": events_ok,
+        "totals": bool(totals30.get("ok")),
+        "pages": bool(pages.get("ok")),
+        "traffic": bool(traffic.get("ok")),
+        "countries": bool(countries.get("ok")),
+        "retention": bool(retention.get("ok")),
+        "ads_links": bool(ads_links.get("ok")),
+        # Webストリームが無い場合（空リスト＝all()はTrue）は「対象なし」であって「未取得」ではない
+        "enhanced_measurement": all(e.get("ok") for e in enhanced),
+        "event_create_rules": all(e.get("ok") for e in event_rules),
+    }
+
     roles = []
     for b in bindings:
         roles.extend(b.get("roles", []))
@@ -72,6 +114,10 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
         "ecommerce_events_found": ecom.get("events_found", {}),
         "data_api_ok": measurement.get("ok"),
         "data_api_error": measurement.get("error"),
+        "collected": collected,
+        "retention_event_data": retention.get("event_data_retention"),
+        "ads_link_count": len(ads_links.get("links") or []),
+        "event_create_rule_count": sum(len(e.get("rules") or []) for e in event_rules),
         "collected_at": _now(),
     }
     detail = {
@@ -82,7 +128,26 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
         "custom_metrics": custom_metrics,
         "access_bindings": bindings,
         "events": events,
+        "retention": retention,
+        "ads_links": ads_links.get("links") or [],
+        "enhanced_measurement": enhanced,
+        "event_create_rules": event_rules,
+        "totals_30d": totals30,
+        "pages": pages,
+        "traffic": traffic,
+        "countries": countries,
     }
+
+    # データ品質チェック（表示時ではなく収集時に1回だけ計算し、summary へ件数を焼き込む）
+    try:
+        import quality
+        q = quality.run_property_checks(detail)
+        detail["quality"] = q
+        summary["quality"] = {**q["counts"], "unverified": q["unverified"]}
+    except Exception as e:
+        _log(f"    QUALITY CHECK ERROR {pid}: {e}")
+        summary["quality"] = None
+
     (DETAILS_DIR / f"{pid}.json").write_text(
         json.dumps(detail, ensure_ascii=False, indent=2), encoding="utf-8"
     )

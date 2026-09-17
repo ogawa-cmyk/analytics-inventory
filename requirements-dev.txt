@@ -1,0 +1,1 @@
+pytest>=8.0  # テスト実行用（python -m pytest）

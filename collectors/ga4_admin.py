@@ -120,6 +120,89 @@ def list_custom_metrics(creds, property_resource_name: str):
     return out
 
 
+def get_data_retention(creds, property_resource_name: str) -> dict:
+    """データ保持期間（v1beta）。取得失敗は ok=False で返し、呼び出し側は「未確認」として扱う。"""
+    client = admin_client(creds)
+    try:
+        s = client.get_data_retention_settings(
+            name=f"{property_resource_name}/dataRetentionSettings"
+        )
+        return {
+            "ok": True,
+            "event_data_retention": s.event_data_retention.name if s.event_data_retention else None,
+            "reset_user_data_on_new_activity": bool(s.reset_user_data_on_new_activity),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def list_google_ads_links(creds, property_resource_name: str) -> dict:
+    """Google広告リンク一覧（v1beta）。"""
+    client = admin_client(creds)
+    try:
+        out = []
+        for link in client.list_google_ads_links(parent=property_resource_name):
+            out.append({
+                "name": link.name,
+                "customer_id": link.customer_id,
+                "ads_personalization_enabled": bool(link.ads_personalization_enabled),
+            })
+        return {"ok": True, "links": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "links": []}
+
+
+def get_enhanced_measurement(creds, stream_resource_name: str) -> dict:
+    """拡張計測設定（v1alpha・webストリームのみ）。parent はデータストリームのリソース名。"""
+    client = admin_alpha_client(creds)
+    try:
+        s = client.get_enhanced_measurement_settings(
+            name=f"{stream_resource_name}/enhancedMeasurementSettings"
+        )
+        return {
+            "ok": True,
+            "stream_enabled": bool(s.stream_enabled),
+            "scrolls_enabled": bool(s.scrolls_enabled),
+            "outbound_clicks_enabled": bool(s.outbound_clicks_enabled),
+            "site_search_enabled": bool(s.site_search_enabled),
+            "video_engagement_enabled": bool(s.video_engagement_enabled),
+            "file_downloads_enabled": bool(s.file_downloads_enabled),
+            "page_changes_enabled": bool(s.page_changes_enabled),
+            "form_interactions_enabled": bool(s.form_interactions_enabled),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def list_event_create_rules(creds, stream_resource_name: str) -> dict:
+    """イベント作成ルール一覧（v1alpha・データストリーム単位）。
+
+    GTM にも gtag にも現れない定義のため、ここを取らないとカスタムイベントの
+    定義元や、同一条件による多重生成（CV水増し）を見落とす。
+    """
+    client = admin_alpha_client(creds)
+    try:
+        out = []
+        for r in client.list_event_create_rules(parent=stream_resource_name):
+            out.append({
+                "name": r.name,
+                "destination_event": r.destination_event,
+                "source_copy_parameters": bool(r.source_copy_parameters),
+                "event_conditions": [
+                    {
+                        "field": c.field,
+                        "comparison_type": c.comparison_type.name if c.comparison_type else None,
+                        "value": c.value,
+                        "negated": bool(getattr(c, "negated", False)),
+                    }
+                    for c in (r.event_conditions or [])
+                ],
+            })
+        return {"ok": True, "rules": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rules": []}
+
+
 def list_access_bindings(creds, property_resource_name: str, my_email: str):
     """Returns my own roles on the property. Requires admin on the property to list all bindings;
     falls back to empty list if forbidden."""

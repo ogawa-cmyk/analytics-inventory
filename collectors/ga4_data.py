@@ -68,6 +68,106 @@ def check_ecommerce(creds, property_id: str, ecom_events: list[str], days: int =
         return {"ok": False, "error": str(e)[:300], "is_ecommerce": None}
 
 
+def sessions_total(creds, property_id: str, days: int = 30) -> dict:
+    """指定期間のセッション総数。イベント実績（30日）と同じ窓で比率検査の分母に使う。"""
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            metrics=[Metric(name="sessions")],
+        ))
+        row = resp.rows[0] if resp.rows else None
+        return {"ok": True, "sessions": int(row.metric_values[0].value) if row else 0}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def page_report(creds, property_id: str, days: int = 30, limit: int = 400) -> dict:
+    """ページ実績（pagePath×pageTitle）。404流入・URL分裂・PII・タイトル未設定の検査材料。"""
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            dimensions=[Dimension(name="pagePath"), Dimension(name="pageTitle")],
+            metrics=[Metric(name="screenPageViews"), Metric(name="sessions")],
+            order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="screenPageViews"), desc=True)],
+            limit=limit,
+        ))
+        rows = []
+        for row in resp.rows:
+            rows.append({
+                "page_path": row.dimension_values[0].value,
+                "page_title": row.dimension_values[1].value,
+                "views": int(row.metric_values[0].value),
+                "sessions": int(row.metric_values[1].value),
+            })
+        return {"ok": True, "rows": rows, "row_limit": limit, "truncated": len(rows) >= limit}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rows": []}
+
+
+def traffic_report(creds, property_id: str, days: int = 30, limit: int = 200) -> dict:
+    """流入実績（source×medium×既定チャネル）。サイト内UTM・Unassigned の検査材料。"""
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            dimensions=[
+                Dimension(name="sessionSource"),
+                Dimension(name="sessionMedium"),
+                Dimension(name="sessionDefaultChannelGroup"),
+            ],
+            metrics=[Metric(name="sessions")],
+            order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
+            limit=limit,
+        ))
+        rows = []
+        for row in resp.rows:
+            rows.append({
+                "source": row.dimension_values[0].value,
+                "medium": row.dimension_values[1].value,
+                "channel_group": row.dimension_values[2].value,
+                "sessions": int(row.metric_values[0].value),
+            })
+        return {"ok": True, "rows": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rows": []}
+
+
+def country_report(creds, property_id: str, days: int = 30, limit: int = 30) -> dict:
+    """国別の行動品質（機械的アクセス検査の材料）。国名だけでは判定しない前提で複数指標を取る。"""
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            dimensions=[Dimension(name="country")],
+            metrics=[
+                Metric(name="sessions"),
+                Metric(name="keyEvents"),
+                Metric(name="userEngagementDuration"),
+                Metric(name="bounceRate"),
+            ],
+            order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
+            limit=limit,
+        ))
+        rows = []
+        for row in resp.rows:
+            rows.append({
+                "country": row.dimension_values[0].value,
+                "sessions": int(row.metric_values[0].value),
+                "key_events": int(float(row.metric_values[1].value or 0)),
+                "engagement_duration": float(row.metric_values[2].value or 0),
+                "bounce_rate": float(row.metric_values[3].value or 0),
+            })
+        return {"ok": True, "rows": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rows": []}
+
+
 def list_events(creds, property_id: str, days: int = 30) -> list[dict]:
     client = data_client(creds)
     try:
