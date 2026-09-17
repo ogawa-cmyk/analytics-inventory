@@ -64,9 +64,11 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
         pages = ga4_data.page_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
         traffic = ga4_data.traffic_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
         countries = ga4_data.country_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
+        hostnames = ga4_data.hostname_report(creds, pid, days=EVENTS_LOOKBACK_DAYS)
     else:
         skipped = {"ok": False, "skipped": True, "error": "未計測のため取得を省略", "rows": []}
         totals30, pages, traffic, countries = dict(skipped), dict(skipped), dict(skipped), dict(skipped)
+        hostnames = dict(skipped)
 
     # 品質チェックの前提: どのデータセットが実際に取れたか。
     # 「取れていない」を「問題なし」と混同しないため、判定側はこのフラグを見て未確認に倒す
@@ -77,6 +79,7 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
         "pages": bool(pages.get("ok")),
         "traffic": bool(traffic.get("ok")),
         "countries": bool(countries.get("ok")),
+        "hostnames": bool(hostnames.get("ok")),
         "retention": bool(retention.get("ok")),
         "ads_links": bool(ads_links.get("ok")),
         # Webストリームが無い場合（空リスト＝all()はTrue）は「対象なし」であって「未取得」ではない
@@ -136,7 +139,19 @@ def collect_property(creds, email: str, account: dict, prop: dict) -> dict:
         "pages": pages,
         "traffic": traffic,
         "countries": countries,
+        "hostnames": hostnames,
     }
+
+    # 自己参照の疑いがある場合だけ、発生ランディングページを追加取得する
+    # （発生ページ不明のまま自己参照を指摘しないため。疑いゼロなら追加のAPI呼び出しなし）
+    try:
+        import quality
+        suspects = quality.self_referral_suspects(detail)
+        if suspects:
+            detail["self_referral_lps"] = ga4_data.self_referral_landing_pages(
+                creds, pid, suspects, days=EVENTS_LOOKBACK_DAYS)
+    except Exception as e:
+        _log(f"    SELF-REFERRAL LP FETCH ERROR {pid}: {e}")
 
     # データ品質チェック（表示時ではなく収集時に1回だけ計算し、summary へ件数を焼き込む）
     try:

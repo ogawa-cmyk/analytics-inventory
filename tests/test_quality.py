@@ -186,6 +186,84 @@ def test_unassigned_threshold():
     assert quality.check_unassigned(d)[0] == "ok"
 
 
+def test_source_medium_variants_case():
+    """大文字小文字だけ違う source は表記ゆれ。実流入が薄い側は問題視しない。"""
+    rows = [{"source": "Facebook", "medium": "social", "channel_group": "Organic Social", "sessions": 120},
+            {"source": "facebook", "medium": "social", "channel_group": "Organic Social", "sessions": 80},
+            {"source": "Yahoo", "medium": "organic", "channel_group": "Organic Search", "sessions": 500},
+            {"source": "yahoo", "medium": "organic", "channel_group": "Organic Search", "sessions": 3}]
+    d = _detail(traffic={"ok": True, "rows": rows})
+    j, s, findings = quality.check_source_medium_variants(d)
+    assert j == "warn"
+    msgs = " ".join(f["message"] for f in findings)
+    assert "Facebook" in msgs and "facebook" in msgs
+    assert "yahoo" not in msgs  # 3セッションの表記は閾値未満＝流入分裂の実害なし
+
+
+def test_source_medium_variants_synonyms_and_parens():
+    """medium の同義語（email/mail）は「疑い」。(direct)/(none) は対象外。"""
+    rows = [{"source": "newsletter", "medium": "email", "channel_group": "Email", "sessions": 200},
+            {"source": "newsletter2", "medium": "mail", "channel_group": "Unassigned", "sessions": 60},
+            {"source": "(direct)", "medium": "(none)", "channel_group": "Direct", "sessions": 5000}]
+    d = _detail(traffic={"ok": True, "rows": rows})
+    j, s, findings = quality.check_source_medium_variants(d)
+    assert j == "warn"
+    assert any("同義語" in f["title"] for f in findings)
+    assert all("(direct)" not in f["message"] for f in findings)
+
+
+def test_source_medium_variants_clean_is_ok():
+    rows = [{"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 900}]
+    d = _detail(traffic={"ok": True, "rows": rows})
+    assert quality.check_source_medium_variants(d)[0] == "ok"
+
+
+def test_notset_traffic_threshold():
+    rows = [{"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 9000},
+            {"source": "(not set)", "medium": "(not set)", "channel_group": "Unassigned", "sessions": 700}]
+    d = _detail(traffic={"ok": True, "rows": rows})
+    j, s, findings = quality.check_notset_traffic(d)
+    assert j == "warn" and "not set" in findings[0]["title"]
+    rows[1]["sessions"] = 30  # 50未満
+    assert quality.check_notset_traffic(d)[0] == "ok"
+
+
+def test_self_referral_detected_with_lp():
+    """自ホスト名が参照元 → ng。www有無の違いも同一ホスト扱い。LPが取れていれば併記。"""
+    d = _detail(
+        hostnames={"ok": True, "rows": [{"hostname": "www.example.com", "sessions": 1000}]},
+        traffic={"ok": True, "rows": [
+            {"source": "example.com", "medium": "referral", "channel_group": "Referral", "sessions": 150},
+            {"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 800}]},
+        self_referral_lps={"ok": True, "rows": [
+            {"source": "example.com", "landing_page": "/payment/done", "sessions": 120}]},
+    )
+    assert quality.self_referral_suspects(d) == ["example.com"]
+    j, s, findings = quality.check_self_referral(d)
+    assert j == "ng"
+    assert "/payment/done" in findings[0]["message"]
+    assert "参照元除外へ追加しない" in findings[0]["fix"]
+
+
+def test_self_referral_without_lp_says_unfetched():
+    d = _detail(
+        hostnames={"ok": True, "rows": [{"hostname": "example.com", "sessions": 1000}]},
+        traffic={"ok": True, "rows": [
+            {"source": "www.example.com", "medium": "referral", "channel_group": "Referral", "sessions": 60}]},
+    )
+    j, s, findings = quality.check_self_referral(d)
+    assert j == "ng" and "未取得" in findings[0]["message"]
+
+
+def test_self_referral_clean_is_ok():
+    d = _detail(
+        hostnames={"ok": True, "rows": [{"hostname": "example.com", "sessions": 1000}]},
+        traffic={"ok": True, "rows": [
+            {"source": "google", "medium": "organic", "channel_group": "Organic Search", "sessions": 800}]},
+    )
+    assert quality.check_self_referral(d)[0] == "ok"
+
+
 def test_foreign_noise_needs_two_signals():
     rows = [
         {"country": "Japan", "sessions": 1700, "key_events": 50,

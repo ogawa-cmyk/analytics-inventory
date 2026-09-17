@@ -6,6 +6,8 @@ from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import (
     DateRange,
     Dimension,
+    Filter,
+    FilterExpression,
     Metric,
     OrderBy,
     RunReportRequest,
@@ -130,6 +132,72 @@ def traffic_report(creds, property_id: str, days: int = 30, limit: int = 200) ->
                 "source": row.dimension_values[0].value,
                 "medium": row.dimension_values[1].value,
                 "channel_group": row.dimension_values[2].value,
+                "sessions": int(row.metric_values[0].value),
+            })
+        return {"ok": True, "rows": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rows": []}
+
+
+def hostname_report(creds, property_id: str, days: int = 30, limit: int = 50) -> dict:
+    """ホスト名別セッション（計測対象ホストの棚卸し）。
+
+    参照元除外・自己参照の指摘は、まず「どのホスト名で計測されているか」を実データで
+    確認してから行う（棚卸し抜きで除外設定を提案しない）。想定外のホスト
+    （ステージング・別ドメイン・翻訳プロキシ等）の混入検知にも使う。
+    """
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            dimensions=[Dimension(name="hostName")],
+            metrics=[Metric(name="sessions")],
+            order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
+            limit=limit,
+        ))
+        rows = []
+        for row in resp.rows:
+            rows.append({
+                "hostname": row.dimension_values[0].value,
+                "sessions": int(row.metric_values[0].value),
+            })
+        return {"ok": True, "rows": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "rows": []}
+
+
+def self_referral_landing_pages(creds, property_id: str, sources: list[str],
+                                days: int = 30, limit: int = 20) -> dict:
+    """自己参照（source=自ホスト名）の発生ランディングページ。
+
+    自己参照を指摘するときは発生ページを併記する（発生ページ不明のまま指摘しない）ための
+    追加取得。疑い source が見つかった場合だけ呼ぶ。
+    """
+    if not sources:
+        return {"ok": True, "rows": []}
+    client = data_client(creds)
+    try:
+        resp = client.run_report(RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[_date_range(days)],
+            dimensions=[
+                Dimension(name="sessionSource"),
+                Dimension(name="landingPagePlusQueryString"),
+            ],
+            metrics=[Metric(name="sessions")],
+            dimension_filter=FilterExpression(filter=Filter(
+                field_name="sessionSource",
+                in_list_filter=Filter.InListFilter(values=sources[:10]),
+            )),
+            order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
+            limit=limit,
+        ))
+        rows = []
+        for row in resp.rows:
+            rows.append({
+                "source": row.dimension_values[0].value,
+                "landing_page": row.dimension_values[1].value,
                 "sessions": int(row.metric_values[0].value),
             })
         return {"ok": True, "rows": rows}

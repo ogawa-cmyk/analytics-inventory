@@ -75,6 +75,20 @@ INTERNAL_MEDIUM_RE = re.compile(r"^(pop|popup|modal|banner_in|inapp|in-app|notic
 UNASSIGNED_SESSION_RATIO = 0.01
 UNASSIGNED_MIN_SESSIONS = 50
 
+# UTM表記ゆれ。同じ意味の source/medium が別表記で混在すると流入が分裂して読めなくなる。
+# 大文字小文字違いは確実な表記ゆれ、同義語ファミリは「疑い」に留める（別施策の可能性があるため）
+VARIANT_MIN_SESSIONS = 10
+MEDIUM_SYNONYM_FAMILIES = (
+    frozenset({"email", "mail", "e-mail"}),
+    frozenset({"social", "sns"}),
+    frozenset({"cpc", "ppc", "paidsearch", "paid_search"}),
+    frozenset({"banner", "display"}),
+)
+
+# source/medium が (not set) の流入 = アトリビューション情報の欠落（utm未設定・計測不備の兆候）
+NOTSET_SESSION_RATIO = 0.01
+NOTSET_MIN_SESSIONS = 50
+
 # 海外ノイズ。国名だけでは絶対に判定しない — 集中(5%かつ100S)に加えて
 # 行動品質の異常が2信号以上重なった場合だけ「疑い」とする
 FOREIGN_MIN_SESSION_RATIO = 0.05
@@ -194,6 +208,28 @@ def _traffic_rows(detail: dict) -> list[dict]:
 
 def _country_rows(detail: dict) -> list[dict]:
     return (detail.get("countries") or {}).get("rows") or []
+
+
+def _hostname_rows(detail: dict) -> list[dict]:
+    return (detail.get("hostnames") or {}).get("rows") or []
+
+
+def self_referral_suspects(detail: dict) -> list[str]:
+    """traffic の source のうち、自プロパティの計測ホスト名と一致するもの（自己参照の疑い）。
+
+    indexer もこれを使い、疑いがある場合だけ発生LPを追加取得する（quality と indexer で
+    判定を二重実装しない）。www. 有無の違いは同一ホストとみなす。
+    """
+    hosts = {str(r.get("hostname", "")).lower().strip() for r in _hostname_rows(detail)}
+    hosts.discard("")
+    hosts.discard("(not set)")
+    variants: set[str] = set()
+    for h in hosts:
+        variants.add(h)
+        variants.add(h[4:] if h.startswith("www.") else "www." + h)
+    out = {str(r.get("source", "")) for r in _traffic_rows(detail)
+           if str(r.get("source", "")).lower().strip() in variants}
+    return sorted(out)
 
 
 def _top_section(path: str) -> str:
@@ -613,6 +649,98 @@ def check_unassigned(detail: dict):
     return "ng", f["message"], [f]
 
 
+def check_source_medium_variants(detail: dict):
+    """同じ意味の source/medium の表記ゆれ（大文字小文字違い＝確実、同義語＝疑い）。"""
+    rows = _traffic_rows(detail)
+    findings = []
+
+    # 大文字小文字だけが違う表記（Facebook/facebook 等）。各表記に実流入がある場合だけ問題視
+    for field, label in (("source", "参照元(source)"), ("medium", "メディア(medium)")):
+        groups: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for r in rows:
+            raw = str(r.get(field, ""))
+            if not raw or raw.startswith("("):  # (direct)/(none)/(not set) は対象外
+                continue
+            groups[raw.lower()][raw] += int(r.get("sessions", 0) or 0)
+        broken = []
+        for variants in groups.values():
+            live = {k: v for k, v in variants.items() if v >= VARIANT_MIN_SESSIONS}
+            if len(live) >= 2:
+                broken.append("・".join(f"{k}({v:,})" for k, v in
+                                        sorted(live.items(), key=lambda kv: -kv[1])))
+        if broken:
+            findings.append(_f(
+                "medium", "流入計測", f"{label}の表記ゆれ（大文字小文字の混在）",
+                f"同じ{label}が別表記で混在し、流入が分裂している: " + "／".join(broken[:3]),
+                "UTMの命名規則を小文字に統一し、既存の配信面のパラメータを修正する",
+                extra=field))
+
+    # 同義語ファミリ（email/mail 等）。別施策の可能性もあるため「疑い」に留める
+    med_sessions: dict[str, int] = defaultdict(int)
+    for r in rows:
+        med_sessions[str(r.get("medium", "")).lower()] += int(r.get("sessions", 0) or 0)
+    for family in MEDIUM_SYNONYM_FAMILIES:
+        live = {m: med_sessions[m] for m in family if med_sessions.get(m, 0) >= VARIANT_MIN_SESSIONS}
+        if len(live) >= 2:
+            pairs = "・".join(f"{m}({v:,})" for m, v in sorted(live.items(), key=lambda kv: -kv[1]))
+            findings.append(_f(
+                "low", "流入計測", "メディア(medium)に同義語の混在の疑い",
+                f"同じ意味と思われる medium が併存している: {pairs}。"
+                "別施策の使い分けでなければ流入が分裂している",
+                "意図した使い分けか確認し、同じ施策なら medium を1つに統一する",
+                extra="・".join(sorted(family))))
+
+    if not findings:
+        return "ok", "source/medium の表記ゆれは見つからない", []
+    judgement, state = _judgement_from(findings, "")
+    return judgement, state, findings
+
+
+def check_notset_traffic(detail: dict):
+    """source/medium が (not set) の流入 = アトリビューション欠落（utm未設定・計測不備の兆候）。"""
+    rows = _traffic_rows(detail)
+    total = sum(int(r.get("sessions", 0) or 0) for r in rows)
+    if total <= 0:
+        return "ok", "流入セッション0のため対象なし", []
+    ns = [r for r in rows
+          if "(not set)" in (str(r.get("source", "")), str(r.get("medium", "")))]
+    n = sum(int(r.get("sessions", 0) or 0) for r in ns)
+    if n < NOTSET_MIN_SESSIONS or n / total < NOTSET_SESSION_RATIO:
+        return "ok", f"(not set) は{n:,}セッションで問題ない水準", []
+    pairs = sorted(ns, key=lambda r: -int(r.get("sessions", 0) or 0))[:3]
+    top = "、".join(f"{r.get('source')}/{r.get('medium')}({int(r.get('sessions', 0) or 0):,})"
+                    for r in pairs)
+    f = _f("medium", "流入計測", "参照元情報が欠落した流入（not set）が多い",
+           f"source/medium が (not set) の流入が{n:,}セッション（全体の{n / total:.1%}）ある"
+           f"（{top}）。リダイレクトによるパラメータ消失・同意モード・計測タグの発火順が原因になり得る",
+           "主要な流入経路（広告・メール・QR）のURLにUTMが残っているか実際に踏んで確認し、"
+           "リダイレクト時のパラメータ引き継ぎを見直す")
+    return "warn", f["message"], [f]
+
+
+def check_self_referral(detail: dict):
+    """自己参照（自サイトのホスト名が参照元になっている）。発生LPが取れていれば併記する。"""
+    hosts = _hostname_rows(detail)
+    suspects = self_referral_suspects(detail)
+    if not suspects:
+        return "ok", f"自ホスト名を名乗る参照元は見つからない（棚卸し済みホスト{len(hosts)}件）", []
+    rows = [r for r in _traffic_rows(detail) if str(r.get("source", "")) in set(suspects)]
+    n = sum(int(r.get("sessions", 0) or 0) for r in rows)
+    lp_rows = (detail.get("self_referral_lps") or {}).get("rows") or []
+    if lp_rows:
+        lps = "、".join(f"{r.get('landing_page')}({int(r.get('sessions', 0) or 0):,})"
+                        for r in lp_rows[:3])
+        lp_note = f"主な発生ランディングページ: {lps}"
+    else:
+        lp_note = "発生ページは未取得（GA4探索で landingPage を確認する）"
+    f = _f("high", "流入計測", "自己参照（自サイトが参照元になっている）",
+           f"source={'・'.join(suspects[:3])} の流入が月{n:,}セッションある。"
+           f"セッションが分断され、本来の流入元が失われている。{lp_note}",
+           "発生ページで原因（別ドメインへの往復・決済/SSOの戻り・クロスドメイン設定漏れ）を"
+           "特定してから対処する。原因を特定せずに参照元除外へ追加しない")
+    return "ng", f["message"], [f]
+
+
 def check_foreign_noise(detail: dict):
     rows = _country_rows(detail)
     total = sum(int(r.get("sessions", 0) or 0) for r in rows)
@@ -736,6 +864,7 @@ DATASET_LABELS = {
     "pages": "ページ実績",
     "traffic": "流入実績",
     "countries": "国別実績",
+    "hostnames": "ホスト名別実績",
     "event_create_rules": "イベント作成ルール",
     "retention": "データ保持設定",
     "enhanced_measurement": "拡張計測設定",
@@ -758,6 +887,9 @@ CHECKS = (
     ("pii_urls", "個人情報のURL混入", ("pages",), check_pii_urls),
     ("internal_utm", "サイト内UTM", ("traffic",), check_internal_utm),
     ("unassigned", "チャネル未分類（Unassigned）", ("traffic",), check_unassigned),
+    ("source_medium_variants", "参照元/メディアの表記ゆれ", ("traffic",), check_source_medium_variants),
+    ("notset_traffic", "参照元情報の欠落（not set）", ("traffic",), check_notset_traffic),
+    ("self_referral", "自己参照（自サイトが参照元）", ("traffic", "hostnames"), check_self_referral),
     ("foreign_noise", "海外からの機械的アクセス", ("countries",), check_foreign_noise),
     ("dup_event_rules", "イベント作成ルールの重複", ("event_create_rules",), check_duplicate_event_rules),
     ("retention", "データ保持期間", ("retention",), check_retention),

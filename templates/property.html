@@ -21,6 +21,7 @@
     <a href="#sec-cd">カスタムDim</a>
     <a href="#sec-cm">カスタム指標</a>
     <a href="#sec-events">イベント一覧</a>
+    <a href="#sec-hostnames">計測ホスト</a>
     <a href="#sec-settings">計測設定</a>
     <a href="#sec-roles">権限</a>
     <a href="#sec-manual">🖐 目視チェック</a>
@@ -98,7 +99,7 @@
   {% else %}
   <h2>🔍 データ品質チェック</h2>
   <p class="small">未実施です。「データ更新」で再収集すると、404流入・個人情報のURL混入・基盤タグの発火漏れ・
-    イベント作成ルールの重複・海外からの機械的アクセスなど17項目を検査します。</p>
+    イベント作成ルールの重複・海外からの機械的アクセスなど20項目を検査します。</p>
   {% endif %}
 </div>
 
@@ -497,6 +498,31 @@ renderResult({{ d.latest_ai_run.parsed | tojson }});
   {% elif d.events and d.events[0].get('_error') %}
   <div class="err">取得失敗: {{ d.events[0]['_error'] }}</div>
   {% else %}<p class="small">データなし</p>{% endif %}
+</div>
+
+<div class="card card-section" id="sec-hostnames" style="margin-top:16px">
+  <h2>計測ホストの棚卸し（直近30日）</h2>
+  {% if d.hostnames and d.hostnames.ok %}
+    {% if d.hostnames.rows %}
+    <table>
+      <thead><tr><th>ホスト名</th><th>セッション</th></tr></thead>
+      <tbody>
+      {% for h in d.hostnames.rows %}
+        <tr><td>{{ h.hostname }}</td><td>{{ '{:,}'.format(h.sessions) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="small" style="color:var(--g-text-muted)">
+      想定外のホスト（ステージング・別ドメイン・翻訳プロキシ等）が混ざっていないか確認。
+      参照元除外やクロスドメイン設定を変える前に、まずこの棚卸しで計測対象ホストを把握する。
+      自己参照（自ホスト名が参照元になる流入）は品質チェックが検出します。
+    </p>
+    {% else %}<p class="small">データなし</p>{% endif %}
+  {% elif d.hostnames %}
+    <p class="small">未取得（{{ (d.hostnames.error or '')[:80] }}）。「データ更新」で再収集してください。</p>
+  {% else %}
+    <p class="small">未取得です。「データ更新」で再収集すると、ホスト名別のセッション数を取得します。</p>
+  {% endif %}
 </div>
 
 <div class="card card-section" id="sec-settings" style="margin-top:16px">
