@@ -14,6 +14,11 @@ from google.analytics.data_v1beta.types import (
 )
 
 
+# 1リクエストの上限秒。無指定だと gRPC が期限なしでブロックし、Google側の一時的な503で
+# indexer 全体が無期限に止まる（2026-09-18 に実発生）。リトライは呼び出し側の再実行に任せる。
+_TIMEOUT = 60.0
+
+
 def data_client(creds):
     return BetaAnalyticsDataClient(credentials=creds)
 
@@ -31,7 +36,7 @@ def check_measurement(creds, property_id: str, days: int = 7) -> dict:
             property=f"properties/{property_id}",
             date_ranges=[_date_range(days)],
             metrics=[Metric(name="sessions"), Metric(name="activeUsers"), Metric(name="eventCount")],
-        ))
+        ), timeout=_TIMEOUT)
         row = resp.rows[0] if resp.rows else None
         sessions = int(row.metric_values[0].value) if row else 0
         users = int(row.metric_values[1].value) if row else 0
@@ -55,7 +60,7 @@ def check_ecommerce(creds, property_id: str, ecom_events: list[str], days: int =
             date_ranges=[_date_range(days)],
             dimensions=[Dimension(name="eventName")],
             metrics=[Metric(name="eventCount")],
-        ))
+        ), timeout=_TIMEOUT)
         found = {}
         for row in resp.rows:
             name = row.dimension_values[0].value
@@ -78,7 +83,7 @@ def sessions_total(creds, property_id: str, days: int = 30) -> dict:
             property=f"properties/{property_id}",
             date_ranges=[_date_range(days)],
             metrics=[Metric(name="sessions")],
-        ))
+        ), timeout=_TIMEOUT)
         row = resp.rows[0] if resp.rows else None
         return {"ok": True, "sessions": int(row.metric_values[0].value) if row else 0}
     except Exception as e:
@@ -96,7 +101,7 @@ def page_report(creds, property_id: str, days: int = 30, limit: int = 400) -> di
             metrics=[Metric(name="screenPageViews"), Metric(name="sessions")],
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="screenPageViews"), desc=True)],
             limit=limit,
-        ))
+        ), timeout=_TIMEOUT)
         rows = []
         for row in resp.rows:
             rows.append({
@@ -125,7 +130,7 @@ def traffic_report(creds, property_id: str, days: int = 30, limit: int = 200) ->
             metrics=[Metric(name="sessions")],
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
             limit=limit,
-        ))
+        ), timeout=_TIMEOUT)
         rows = []
         for row in resp.rows:
             rows.append({
@@ -155,7 +160,7 @@ def hostname_report(creds, property_id: str, days: int = 30, limit: int = 50) ->
             metrics=[Metric(name="sessions")],
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
             limit=limit,
-        ))
+        ), timeout=_TIMEOUT)
         rows = []
         for row in resp.rows:
             rows.append({
@@ -192,7 +197,7 @@ def self_referral_landing_pages(creds, property_id: str, sources: list[str],
             )),
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
             limit=limit,
-        ))
+        ), timeout=_TIMEOUT)
         rows = []
         for row in resp.rows:
             rows.append({
@@ -221,7 +226,7 @@ def country_report(creds, property_id: str, days: int = 30, limit: int = 30) -> 
             ],
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="sessions"), desc=True)],
             limit=limit,
-        ))
+        ), timeout=_TIMEOUT)
         rows = []
         for row in resp.rows:
             rows.append({
@@ -246,7 +251,7 @@ def list_events(creds, property_id: str, days: int = 30) -> list[dict]:
             metrics=[Metric(name="eventCount"), Metric(name="totalUsers")],
             order_bys=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="eventCount"), desc=True)],
             limit=500,
-        ))
+        ), timeout=_TIMEOUT)
         out = []
         for row in resp.rows:
             out.append({
