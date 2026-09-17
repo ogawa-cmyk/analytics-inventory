@@ -159,6 +159,26 @@
 
     <dt>ツールタグ</dt>
     <dd>ホームの要対応タイル左上に表示される小さな色付きラベル。<b>📊 GA4（緑）/ 🏷 GTM（紫）/ 🔍 SC（青）</b> の3種。クロス系は両色グラデーション。</dd>
+
+    <dt>データ品質チェック (Quality Check)</dt>
+    <dd>設定の一覧ではなく<b>実績データの形</b>から不備を探す17項目の検査（404流入・個人情報のURL混入・
+    基盤タグの発火漏れ・イベント作成ルール重複・海外からの機械的アクセス等）。データ収集時に実行され、
+    プロパティ詳細で ○/△/×/未確認 の判定一覧を確認できる。</dd>
+
+    <dt>未確認 (Unverified)</dt>
+    <dd>品質チェックで、必要なデータが取得できず<b>判定そのものができなかった</b>状態。
+    「問題なし（○）」とは明確に区別される。収集失敗・権限不足・チェック未実施のときに表示され、
+    データ再収集で解消される。「対象なし」（例: イベント作成ルール0件）は○側に理由付きで表示される。</dd>
+
+    <dt>公開実装スキャン (Site Scan)</dt>
+    <dd>対象サイトの公開HTMLと公開gtm.jsを読み取り、<b>実際にブラウザへ配信されている計測実装</b>を
+    復元する機能。GTMの閲覧権限が無いコンテナ・直書きのgtag・登録の無い測定ID・UA残存が見つかる。
+    タグ名は公開情報に含まれないため表示されない。プロパティ詳細の🌐から実行。</dd>
+
+    <dt>目視確認チェックリスト</dt>
+    <dd>APIから取得できない・データからは原理的に判定できない確認事項の一覧（Search Console連携・
+    内部トラフィック定義・セッションタイムアウト等の10項目）。「なぜ機械化していないか」の理由付きで
+    プロパティ詳細に表示される。</dd>
   </dl>
 </div>
 
@@ -221,25 +241,30 @@
 <div class="card help-section" id="alerts">
   <h2>アラート種別と判定条件</h2>
 
-  <h3>📊 GA4 (5種)</h3>
+  <h3>📊 GA4 (8種)</h3>
   <table>
     <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
     <tbody>
       <tr><td><span class="badge b-ng">error</span></td><td><code>untracked</code></td><td>直近7日間データなし（計測停止の可能性）</td></tr>
       <tr><td><span class="badge b-ng">error</span></td><td><code>no_streams</code></td><td>データストリーム0件</td></tr>
+      <tr><td><span class="badge b-ng">error</span></td><td><code>quality_error</code></td><td>データ品質チェックで重大な検出（個人情報のURL混入・基盤タグ停止等）</td></tr>
       <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>api_err</code></td><td>Data APIエラー（権限不足等）</td></tr>
       <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>no_ke</code></td><td>キーイベント未設定</td></tr>
       <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>cd_overflow</code></td><td>カスタムDimが50件超</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>quality_warn</code></td><td>データ品質チェックで要確認の検出（404流入・日本語イベント名等）</td></tr>
+      <tr><td><span class="badge">info</span></td><td><code>quality_pending / unverified</code></td><td>品質チェック未実施、またはデータ未取得で未確認の項目がある</td></tr>
     </tbody>
   </table>
 
-  <h3>🏷 GTM (3種)</h3>
+  <h3>🏷 GTM (5種)</h3>
   <table>
     <thead><tr><th>level</th><th>kind</th><th>条件</th></tr></thead>
     <tbody>
       <tr><td><span class="badge b-ng">error</span></td><td><code>no_tags</code></td><td>タグが0件（稼働していない）</td></tr>
       <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>ua_left</code></td><td>レガシーUA系タグが3件以上残存</td></tr>
       <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>no_ga4</code></td><td>GA4 Measurement IDが紐づいていない</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>dup_ad_labels</code></td><td>広告CVタグが同一のコンバージョンID・ラベルで複数発火（多重計上）</td></tr>
+      <tr><td><span class="badge" style="background:#fff3e0;color:#ef6c00">warn</span></td><td><code>ua_in_html</code></td><td>カスタムHTML内に旧GA（UA測定ID・analytics.js・_gaq）への参照が残存</td></tr>
     </tbody>
   </table>
 

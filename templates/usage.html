@@ -62,6 +62,7 @@
     <li><a href="#what">このツールで何ができるか</a></li>
     <li><a href="#flow-daily">毎日のチェック（5分）— ホームの読み方</a></li>
     <li><a href="#flow-alert">要対応アラートの読み解きと対応フロー</a></li>
+    <li><a href="#flow-quality">データ品質チェックと公開実装スキャン</a></li>
     <li><a href="#flow-weekly">週次の改善フロー（30分）</a></li>
     <li><a href="#watch">変化ログと週次通知（メール/Slack/Webhook）</a></li>
     <li><a href="#flow-ai">AI分析の活用パターン（個別・一括・自動）</a></li>
@@ -212,14 +213,49 @@
     <li><b>🤖 AI委任ヒント</b>（該当する場合、AI分析実行を促す）</li>
   </ul>
 
-  <h3>対策ガイドが用意されているアラート（13種類）</h3>
+  <h3>対策ガイドが用意されているアラート（16種類）</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-top:6px">
-    <div><b style="color:var(--g-primary-dark)">GA4 (5種)</b><br>untracked / no_streams / api_err / no_ke / cd_overflow</div>
-    <div><b style="color:#6c5ce7">GTM (3種)</b><br>no_tags / ua_left / no_ga4</div>
+    <div><b style="color:var(--g-primary-dark)">GA4 (6種)</b><br>untracked / no_streams / api_err / no_ke / cd_overflow / quality</div>
+    <div><b style="color:#6c5ce7">GTM (5種)</b><br>no_tags / ua_left / no_ga4 / dup_ad_labels / ua_in_html</div>
     <div><b style="color:#0288d1">SC (3種)</b><br>sc_no_clicks / sc_no_sitemap / sc_low_ctr</div>
     <div><b>クロス (2種)</b><br>duplicate_mids / mismatch</div>
   </div>
   <p class="small" style="margin-top:10px">それぞれに「GA4管理画面の操作手順」「GTM編集手順」「サイト側の調査ステップ」など具体的な行動が記載されているので、見ながら対処できます。</p>
+</div>
+
+<div class="card help-section" id="flow-quality">
+  <h2>データ品質チェックと公開実装スキャン</h2>
+  <p style="font-size:13px">v1.4.0で追加された、<b>設定の一覧だけでは見つからない問題</b>を探す2つの機能です。どちらもプロパティ詳細ページから使います。</p>
+
+  <h3>🔍 データ品質チェック（17項目・自動）</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>データ収集（⟳ 更新）のたびに自動実行され、<b>実績データの形</b>から不備を検出します —
+      404ページへの流入、個人情報のURL混入、基盤タグの発火漏れ（session_start比）、
+      イベント作成ルールの重複、海外からの機械的アクセスなど</li>
+    <li>プロパティ詳細の「🔍 データ品質チェック」で、指摘の詳細（理由と実測値・対応方法つき）と
+      <b>全17項目の判定一覧（○/△/×/未確認）</b>を確認できます</li>
+    <li><b>「未確認」は「問題なし」ではありません</b>。データが取得できず判定できなかった項目で、
+      再収集すると埋まります。「対象なし」（ルール0件など）は状態欄に理由付きで表示されます</li>
+    <li>検出があるとホームの要対応に「品質検出」タイルが出ます。個人情報の混入（error）は
+      週次通知の要対応にも自動で載ります</li>
+  </ul>
+
+  <h3>🌐 公開実装スキャン（手動・ボタン1つ）</h3>
+  <ul style="font-size:13px;line-height:1.8">
+    <li>対象サイトの<b>公開HTMLと公開gtm.js</b>を読み取り、実際にブラウザへ配信されている
+      計測実装を復元します。対象はWebストリームに登録されたURLのみです</li>
+    <li>分かること: 登録済みMIDが本当に配信されているか ／ <b>登録の無い想定外の測定ID</b> ／
+      <b>GTMの閲覧権限が無いコンテナ</b>のタグ構成 ／ UA残存 ／ 同一イベントでの複数計測タグ発火（多重計上候補）</li>
+    <li>権限をもらう前のクライアントサイトの一次診断にも使えます（タグ名は公開情報に
+      含まれないため表示されません）</li>
+    <li>「想定外」は不正の断定ではありません。別プロパティの正当な併用・移行中の場合もあるため、
+      確認候補として提示します</li>
+  </ul>
+
+  <h3>🖐 目視確認チェックリスト</h3>
+  <p style="font-size:13px">APIから取得できない設定（Search Console連携・内部トラフィック定義・
+  セッションタイムアウト等）は、プロパティ詳細の末尾に「なぜ機械化していないか」の理由付きで
+  10項目のチェックリストとして表示されます。四半期に一度の棚卸しにどうぞ。</p>
 </div>
 
 <div class="card help-section" id="flow-weekly">
@@ -229,7 +265,8 @@
     <div class="step-num">1</div>
     <div class="step-body">
       <h4>プロパティ詳細ページを開く</h4>
-      <p>GA4プロパティ一覧から対象プロパティの名前をクリック。<b>右サイドにスティッキー目次</b>が表示され、長いページでも目的のセクションへ即移動可。</p>
+      <p>GA4プロパティ一覧から対象プロパティの名前をクリック。<b>右サイドにスティッキー目次</b>が表示され、長いページでも目的のセクションへ即移動可。
+      まず「🚨 アラート」と「<b>🔍 データ品質チェック</b>」の指摘（理由・実測値・対応方法つき）を確認してからAI分析へ進むと効率的です。</p>
     </div>
   </div>
 
