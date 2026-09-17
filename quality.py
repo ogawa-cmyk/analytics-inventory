@@ -728,7 +728,10 @@ def check_self_referral(detail: dict):
     n = sum(int(r.get("sessions", 0) or 0) for r in rows)
     lp_rows = (detail.get("self_referral_lps") or {}).get("rows") or []
     if lp_rows:
-        lps = "、".join(f"{r.get('landing_page')}({int(r.get('sessions', 0) or 0):,})"
+        def _short(u: str) -> str:
+            # フォーム系LPはクエリに個人・企業情報が長々と付くことがある。表示はパス中心に切り詰める
+            return u if len(u) <= 60 else u[:60] + "…"
+        lps = "、".join(f"{_short(str(r.get('landing_page')))}({int(r.get('sessions', 0) or 0):,})"
                         for r in lp_rows[:3])
         lp_note = f"主な発生ランディングページ: {lps}"
     else:
