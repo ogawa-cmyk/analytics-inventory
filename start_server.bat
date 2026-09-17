@@ -1,5 +1,5 @@
 @echo off
-REM GA4 Inventory server — double-click to start.
+REM GA4 Inventory server - double-click to start.
 REM Closing this window stops the server.
 title GA4 Inventory Server (port 8788)
 cd /d "%~dp0"

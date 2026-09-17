@@ -1,0 +1,16 @@
+# 既定はGitに自動判定させる
+* text=auto
+
+# Windowsバッチは必ずCRLFで取り出す（LFだとcmd.exeがパースに失敗して起動できない）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# シェルスクリプトはLF
+*.sh text eol=lf
+
+# バイナリは変換しない
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ttf binary
+*.ttc binary
