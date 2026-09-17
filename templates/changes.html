@@ -62,7 +62,7 @@
         <td class="small">{{ {'ga4':'GA4','gtm':'GTM','sc':'SC'}.get(e.kind, e.kind) }}</td>
         <td>
           {% if e.kind == 'ga4' %}<a class="prop" href="/property/{{ e.entity_id }}">{{ e.entity_name }}</a>
-          {% elif e.kind == 'gtm' %}<a class="prop" href="/gtm/{{ e.entity_id }}/tags">{{ e.entity_name }}</a>
+          {% elif e.kind == 'gtm' %}<a class="prop" href="/gtm/{{ e.entity_id }}/tag">{{ e.entity_name }}</a>
           {% elif e.kind == 'sc' %}<a class="prop" href="/sc/{{ e.entity_id }}">{{ e.entity_name }}</a>
           {% else %}{{ e.entity_name }}{% endif %}
         </td>
