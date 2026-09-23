@@ -125,6 +125,48 @@ def api_health():
     })
 
 
+@app.route("/api/property/<pid>/summary")
+def api_property_summary(pid: str):
+    """姉妹ツール（UX-Testing-Tools 等）向け: 1プロパティの計測品質サマリー。認証なし・読み取り専用。
+
+    UXTT側の Measure 節・診断詳細が、サイトに紐づくGA4プロパティの健全性をここから取り込む。
+    """
+    if not _safe_id(pid):
+        return jsonify({"error": "invalid property id"}), 404
+    path = DETAILS_DIR / f"{pid}.json"
+    if not path.exists():
+        return jsonify({"error": "property not found"}), 404
+    try:
+        detail = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return jsonify({"error": "failed to read property detail"}), 404
+    summary = dict(detail.get("summary") or {})
+    if not summary:
+        return jsonify({"error": "property not found"}), 404
+    # health_grade/health_score/alert_count は summary に保存されておらず、都度算出する
+    # （property_detail のパターンと同じ: health.enrich_properties を1件に対して適用）。
+    health.enrich_properties([summary])
+    findings = ((detail.get("quality") or {}).get("findings") or [])
+    _severity_rank = {"error": 0, "warn": 1, "info": 2}
+    sorted_findings = sorted(findings, key=lambda f: _severity_rank.get(f.get("level"), 3))
+    top_findings = [
+        {"severity": f.get("level"), "category": f.get("category"), "title": f.get("title")}
+        for f in sorted_findings[:5]
+    ]
+    return jsonify({
+        "property_id": pid,
+        "display_name": summary.get("display_name"),
+        "health_grade": summary.get("health_grade"),
+        "health_score": summary.get("health_score"),
+        "key_event_names": summary.get("key_event_names") or [],
+        "quality": summary.get("quality"),
+        "alerts_count": summary.get("alert_count"),
+        "top_findings": top_findings,
+        "collected_at": summary.get("collected_at"),
+        "property_url": f"/property/{pid}",
+    })
+
+
 @app.route("/")
 def home():
     inv = _load_inventory()
