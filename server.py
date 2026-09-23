@@ -103,6 +103,28 @@ def inject_globals():
             "github_url": f"https://github.com/{GITHUB_REPO}"}
 
 
+@app.route("/api/health")
+def api_health():
+    """姉妹ツール（UX-Testing-Tools 等）からの接続確認用。認証なし・読み取り専用の要約だけ返す。"""
+    from config import VERSION
+    inv = {}
+    if INVENTORY_PATH.exists():
+        try:
+            inv = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            inv = {}
+    return jsonify({
+        "status": "ok",
+        "app": "analytics-inventory",
+        "version": VERSION,
+        "demo_mode": DEMO_MODE,
+        "generated_at": inv.get("generated_at"),
+        "property_count": inv.get("property_count", len(inv.get("properties") or [])),
+        "gtm_container_count": inv.get("gtm_container_count", len(inv.get("gtm_containers") or [])),
+        "sc_site_count": inv.get("sc_site_count", len(inv.get("sc_sites") or [])),
+    })
+
+
 @app.route("/")
 def home():
     inv = _load_inventory()
