@@ -33,7 +33,10 @@ def add_account() -> str:
             "JSON from Google Cloud Console and save it there."
         )
     flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET_PATH), SCOPES)
-    creds = flow.run_local_server(port=0, prompt="consent")
+    # select_account を付けないと、ブラウザにログイン済みのアカウントが
+    # 黙って選ばれることがある。複数アカウントを束ねるツールなので、
+    # どれを追加するのかは毎回選ばせる（取り違えると別アカウントを更新してしまう）。
+    creds = flow.run_local_server(port=0, prompt="select_account consent")
     email = _userinfo(creds)
     _token_path(email).write_text(creds.to_json(), encoding="utf-8")
     return email

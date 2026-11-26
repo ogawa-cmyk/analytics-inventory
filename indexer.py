@@ -320,7 +320,28 @@ def _run(emails: list[str]) -> None:
         "sc_sites": sc_sites,
         "errors": errors,
     }
+    # 健全性の判定は、上書きする前の inventory（＝前回の収集結果）と比べる
+    prev_inv = {}
+    try:
+        if INVENTORY_PATH.exists():
+            prev_inv = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        prev_inv = {}
+
     INVENTORY_PATH.write_text(json.dumps(inventory, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 収集そのものが健全だったか（認証切れ・件数の急減）。
+    # 個々のプロパティの変化は changes.py が見るが、全体が減ったことは見ていない。
+    try:
+        import collection_health
+        health_state = collection_health.assess(inventory, prev_inv)
+        collection_health.save(health_state)
+        if health_state["level"] != "ok":
+            _log(f"COLLECTION HEALTH [{health_state['level']}]: "
+                 f"{collection_health.summary_line(health_state)}")
+    except Exception as e:
+        _log(f"Collection health check failed: {e}")
+
     try:
         from diff import save_snapshot
         snap = save_snapshot(inventory)

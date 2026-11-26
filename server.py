@@ -203,6 +203,14 @@ def home():
     n_gtm_ua = sum(1 for c in conts if c.get("_score_summary", {}).get("ua_count", 0) >= 1)
     snapshots_n = len(diff_mod.list_snapshots())
 
+    # 収集そのものが健全だったか（認証切れ・件数の急減）。
+    # 収集時に判定済みの結果を読むだけなので、画面表示は重くならない。
+    try:
+        import collection_health
+        coll_health = collection_health.load()
+    except Exception:
+        coll_health = None
+
     # === LAYER 3 — AI panel ===
     import auto_diagnose
     auto_state = auto_diagnose.load_state()
@@ -259,6 +267,7 @@ def home():
         "home.html",
         inv=inv,
         update_info=update_info,
+        coll_health=coll_health,
         properties=props,
         containers=conts,
         # layer 1

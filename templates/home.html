@@ -2,6 +2,52 @@
 {% block title %}ダッシュボード{% endblock %}
 {% block body %}
 
+{# 収集そのものが壊れていたら、何より先に出す。
+   285件→153件のような半減が「エラー6」の小さな表示だけで5日気づかれなかったため。 #}
+{% if coll_health and coll_health.level != 'ok' %}
+<div class="card" style="margin-bottom:14px;border-left:4px solid {% if coll_health.level == 'critical' %}var(--g-error){% else %}var(--g-warn){% endif %}">
+  <h2 style="color:{% if coll_health.level == 'critical' %}var(--g-error){% else %}var(--g-warn){% endif %}">
+    {% if coll_health.level == 'critical' %}🚨 データが一部しか集まっていません{% else %}⚠ 収集できた件数が減っています{% endif %}
+  </h2>
+
+  {% if coll_health.auth_failures %}
+  <p style="font-size:13px;margin-bottom:8px">
+    次のアカウントで<b>認証が切れています</b>。このアカウントのプロパティ・コンテナ・サイトは
+    <b>まるごと収集できておらず、一覧にも要対応にも出てきません</b>。
+  </p>
+  <ul style="font-size:13px;line-height:1.9;margin:0 0 10px 20px">
+    {% for a in coll_health.auth_failures %}
+    <li><code>{{ a.email }}</code>{% if a.stages %} <span class="small" style="color:#888">（{{ a.stages|join(' / ') }}）</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <p class="small" style="margin-bottom:10px">
+    直し方: ツールのフォルダで <code>.venv\Scripts\python.exe auth.py add</code> を実行し、
+    ブラウザで該当のアカウントを選んで許可してください。そのあと「▶ データ更新」で元に戻ります。
+  </p>
+  {% endif %}
+
+  {% if coll_health.count_drops %}
+  <p style="font-size:13px;margin-bottom:6px">前回の収集と比べて、次のように減っています。</p>
+  <table style="font-size:13px;margin-bottom:10px">
+    <thead><tr><th>対象</th><th>前回</th><th>今回</th><th>差</th></tr></thead>
+    <tbody>
+      {% for d in coll_health.count_drops %}
+      <tr>
+        <td>{{ d.label }}</td>
+        <td>{{ d.before }}件</td>
+        <td><b>{{ d.after }}件</b></td>
+        <td class="diff-down">−{{ d.lost }}件（{{ (d.ratio * 100)|round|int }}%減）</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="small">意図的に整理した場合は、次回の収集でこの警告は消えます。</p>
+  {% endif %}
+
+  <a class="btn" href="/errors">エラーの詳細を見る</a>
+</div>
+{% endif %}
+
 {% if update_info %}
 <div class="alert-banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   <span>🆕 新しいバージョン <b>v{{ update_info.latest }}</b> が公開されています（現在: v{{ update_info.current }}）。</span>
