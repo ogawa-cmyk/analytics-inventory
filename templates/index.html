@@ -223,8 +223,8 @@ async function openBulkDialog(){
   if(!ids.length) return;
   const body = `<p>${ids.length}件を一括AI分析します。モデルを選択してください:</p>
     <div style="display:flex;gap:8px;flex-direction:column;margin-top:10px">
-      <label><input type="radio" name="bulkModel" value="claude-sonnet-4-6" checked> <b>Sonnet 4.6</b> <span class="small">標準・速い（推奨）</span></label>
-      <label><input type="radio" name="bulkModel" value="claude-opus-4-8"> <b>Opus 4.8</b> <span class="small">深い分析（約5倍コスト）</span></label>
+      <label><input type="radio" name="bulkModel" value="claude-sonnet-5-5" checked> <b>Sonnet 5.5</b> <span class="small">標準・速い（推奨）</span></label>
+      <label><input type="radio" name="bulkModel" value="claude-opus-5-5"> <b>Opus 5.5</b> <span class="small">深い分析（約2倍コスト）</span></label>
     </div>`;
   const proceed = await showModal({
     title: `一括AI分析 (${ids.length}件)`,
@@ -232,7 +232,7 @@ async function openBulkDialog(){
     actions: [{label:'キャンセル', value:false}, {label:'次へ', value:true, primary:true}],
   });
   if(!proceed) return;
-  const modelId = document.querySelector('input[name=bulkModel]:checked')?.value || 'claude-sonnet-4-6';
+  const modelId = document.querySelector('input[name=bulkModel]:checked')?.value || 'claude-sonnet-5-5';
   try {
     const est = await fetch(`/api/bulk/estimate?n=${ids.length}&model=${modelId}`).then(r=>r.json());
     const confirmBody = `<table>

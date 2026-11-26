@@ -15,6 +15,23 @@
       ・ AI分析対象: {{ auto_state.analyzed_count or 0 }}件
       {% if auto_state.job_id %}<a class="prop" href="/bulk/{{ auto_state.job_id }}">→ 結果ジョブを見る</a>{% endif %}
     </p>
+    {# 分析が実際に終わったかどうかを出す。これが無いと、対象件数だけ見て
+       「分析済み」と誤解する（2026-06〜11に5か月気づけなかった原因） #}
+    {% if auto_state.job_status %}
+      <p class="small">
+        結果:
+        {% if auto_state.job_status == 'done' and not auto_state.analyzed_error %}
+          <span class="alert-ok">✓ 分析完了 {{ auto_state.analyzed_ok }}件</span>
+        {% elif auto_state.job_status == 'done' %}
+          <span class="alert-warn">分析完了 {{ auto_state.analyzed_ok }}件 / 失敗 {{ auto_state.analyzed_error }}件</span>
+        {% else %}
+          <span class="alert-warn">⚠ 未完了（{{ auto_state.job_status }}）</span>
+        {% endif %}
+        {% if auto_state.actual_usd %}<span style="color:#888">・ 実費 ${{ auto_state.actual_usd }}</span>{% endif %}
+      </p>
+    {% elif auto_state.job_id %}
+      <p class="small"><span class="alert-warn">⚠ このジョブは分析が完了したか記録がありません</span>（v1.5.1以前の自動診断は、ジョブを作るだけで分析されていませんでした）</p>
+    {% endif %}
   {% else %}
     <p class="small">まだ自動診断は実行されていません。3日ごとのデータ更新後に自動で動きます。</p>
   {% endif %}
@@ -22,7 +39,46 @@
   <span class="small" id="auto-status"></span>
 </div>
 
+{% if stale %}
+<div class="card" style="margin-bottom:14px;border-left:3px solid var(--g-warn)">
+  <h2 style="color:var(--g-warn)">⚠ 中断したジョブが {{ stale|length }} 件あります</h2>
+  <p class="small">
+    分析が最後まで走らずに残っているジョブです。サーバーの再起動や、バッチ処理の終了で中断すると、この状態になります。<br>
+    <b>記録を消すだけで、AIの再実行はしません</b>（勝手に利用料がかかることはありません）。
+  </p>
+  <table style="margin:10px 0">
+    <thead><tr><th>作成日時</th><th>種別</th><th>対象</th><th>状態</th></tr></thead>
+    <tbody>
+      {% for j in stale[:8] %}
+      <tr>
+        <td class="small" style="white-space:nowrap">{{ (j.started_at or '')[:16].replace('T',' ') }}</td>
+        <td class="small">{{ '自動' if j.kind == 'auto' else '手動' }}</td>
+        <td class="small">{{ j.property_ids|length }}件</td>
+        <td class="small">{{ j.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if stale|length > 8 %}<p class="small">ほか {{ stale|length - 8 }} 件</p>{% endif %}
+  <button class="btn" onclick="discardStale()" {% if demo_mode %}disabled title="デモ環境では無効です"{% endif %}>🗑 中断したジョブの記録を削除</button>
+  <span class="small" id="stale-status"></span>
+</div>
+{% endif %}
+
 <script>
+async function discardStale(){
+  const ok = await confirmModal('中断したジョブの記録を削除します。分析結果は元々ないので失われるものはありません。よろしいですか？');
+  if(!ok) return;
+  const sta = document.getElementById('stale-status');
+  sta.textContent = ' 削除中…';
+  try {
+    const r = await fetch('/api/bulk/discard_stale', {method:'POST'});
+    const d = await r.json();
+    if(d.ok){ showToast(d.deleted + '件の記録を削除しました'); setTimeout(()=>location.reload(), 700); }
+    else { sta.textContent = ' 失敗: ' + (d.error || ''); }
+  } catch(e){ sta.textContent = ' 失敗: ' + e.message; }
+}
+
 async function runAutoDiag(){
   const sta = document.getElementById('auto-status');
   sta.textContent = ' 実行中…';
@@ -65,8 +121,13 @@ async function runAutoDiag(){
       </td>
       <td>{{ j.n_done }} / {{ j.n_total }}</td>
       <td>{{ j.n_error or 0 }}</td>
-      <td class="small">
-        {% if j.status == 'done' %}—{% endif %}
+      <td class="small" style="white-space:nowrap">
+        {% if j.actual_usd is not none %}
+          <b>${{ '%.3f'|format(j.actual_usd) }}</b>
+          <span style="color:#888">（約{{ (j.actual_usd * 155)|round|int }}円）</span>
+        {% elif j.estimated_usd is not none %}
+          <span style="color:#888">推定 ${{ '%.3f'|format(j.estimated_usd) }}</span>
+        {% else %}—{% endif %}
       </td>
     </tr>
   {% endfor %}

@@ -32,8 +32,8 @@ def _load_env_key() -> str | None:
     return None
 
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
-DEEP_MODEL = "claude-opus-4-8"
+DEFAULT_MODEL = "claude-sonnet-5-5"
+DEEP_MODEL = "claude-opus-5-5"
 
 SYSTEM_PROMPT = """あなたはGA4（Google Analytics 4）とGTM（Google Tag Manager）実装の上級コンサルタントです。
 ユーザー（小川卓 / HAPPY ANALYTICS代表）から渡されたプロパティ情報をもとに、課題を洗い出し、具体的なアクションプランを提示してください。

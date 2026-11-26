@@ -696,13 +696,13 @@ async function quickBulkAlerted(){
       title: `アラート分一括AI分析 (${d.n}件)`,
       body: `<p>アラートが発生している${d.n}件のプロパティを一括分析します。モデル選択:</p>
         <div style="display:flex;gap:8px;flex-direction:column;margin-top:10px">
-          <label><input type="radio" name="bulkM" value="claude-sonnet-4-6" checked> <b>Sonnet 4.6</b> <span class="small">標準・速い（推奨）</span></label>
-          <label><input type="radio" name="bulkM" value="claude-opus-4-8"> <b>Opus 4.8</b> <span class="small">深い分析（約5倍コスト）</span></label>
+          <label><input type="radio" name="bulkM" value="claude-sonnet-5-5" checked> <b>Sonnet 5.5</b> <span class="small">標準・速い（推奨）</span></label>
+          <label><input type="radio" name="bulkM" value="claude-opus-5-5"> <b>Opus 5.5</b> <span class="small">深い分析（約2倍コスト）</span></label>
         </div>`,
       actions: [{label:'キャンセル', value:false}, {label:'次へ', value:true, primary:true}],
     });
     if(!proceed) return;
-    const modelId = document.querySelector('input[name=bulkM]:checked')?.value || 'claude-sonnet-4-6';
+    const modelId = document.querySelector('input[name=bulkM]:checked')?.value || 'claude-sonnet-5-5';
     const est = await fetch(`/api/bulk/estimate?n=${d.n}&model=${modelId}`).then(r=>r.json());
     const ok = await showModal({
       title: '実行確認',

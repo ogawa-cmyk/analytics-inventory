@@ -14,7 +14,7 @@ from config import DATA_DIR, INVENTORY_PATH
 
 AUTO_STATE_PATH = DATA_DIR / "auto_diagnose_latest.json"
 DEFAULT_MAX_PER_RUN = 15
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 
 
 def _log(msg: str) -> None:
@@ -85,13 +85,27 @@ def run(max_n: int = DEFAULT_MAX_PER_RUN, model: str = DEFAULT_MODEL) -> dict:
     label = f"自動診断 {datetime.now().strftime('%Y-%m-%d %H:%M')} - {len(ids)}件"
     job = bulk_analyzer.create_job(ids, model=model, kind="auto", label=label, max_batch=max_n)
     _log(f"Created job {job['job_id']} for {len(ids)} properties.")
-    bulk_analyzer.start_job(job["job_id"])
+
+    # ここは必ず同期実行（run_job）にする。start_job のデーモンスレッドだと、
+    # このプロセスが直後に終わるので分析が始まる前に殺され、ジョブが queued のまま残る。
+    done = bulk_analyzer.run_job(job["job_id"]) or {}
+    results = done.get("results") or []
+    ok = sum(1 for r in results if not r.get("error"))
+    ng = len(results) - ok
+    _log(f"Analysis finished: status={done.get('status')} ok={ok} error={ng} "
+         f"usd={done.get('actual_usd')}")
 
     state = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "job_id": job["job_id"],
         "flagged_count": len(flagged),
         "analyzed_count": len(ids),
+        # 実際に分析が終わったかどうか。これを持たないと、画面上は
+        # 「分析した」ように見えて中身が無い状態に気づけない。
+        "job_status": done.get("status"),
+        "analyzed_ok": ok,
+        "analyzed_error": ng,
+        "actual_usd": done.get("actual_usd"),
         "flagged": flagged,
         "model": model,
     }

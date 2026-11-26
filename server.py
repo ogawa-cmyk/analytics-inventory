@@ -691,7 +691,29 @@ def bulk_list():
     inv = _load_inventory()
     import auto_diagnose
     auto_state = auto_diagnose.load_state()
-    return render_template("bulk_list.html", inv=inv, jobs=jobs, auto_state=auto_state)
+    # 最後まで走らなかったジョブ（サーバー再起動やバッチ終了で中断したもの）。
+    # 放っておくと溜まり続けるので、画面から掃除できるようにする。
+    try:
+        stale = bulk_analyzer.stale_jobs()
+    except Exception:
+        stale = []
+    return render_template("bulk_list.html", inv=inv, jobs=jobs,
+                           auto_state=auto_state, stale=stale)
+
+
+@app.route("/api/bulk/discard_stale", methods=["POST"])
+def api_bulk_discard_stale():
+    """中断したまま残っているジョブの記録をまとめて削除する。
+
+    記録を消すだけで、AIの再実行はしない（勝手に課金を発生させない）。
+    """
+    if DEMO_MODE:
+        return jsonify({"ok": False, "error": "デモ環境では無効です"}), 403
+    n = 0
+    for job in bulk_analyzer.stale_jobs():
+        if bulk_analyzer.discard_job(job["job_id"]):
+            n += 1
+    return jsonify({"ok": True, "deleted": n})
 
 
 @app.route("/bulk/<job_id>")

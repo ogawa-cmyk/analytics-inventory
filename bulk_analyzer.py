@@ -19,19 +19,31 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_MAX_BATCH = 20
 
-# Pricing (per million tokens). Approximate; update if Anthropic pricing changes.
+# 100万トークンあたりの料金（USD）。Anthropicの公式料金表と揃えること。
+# 見積もり画面の金額はここから計算するので、ずれていると利用者に誤った額を見せる。
 _PRICING = {
-    "claude-sonnet-4-6": {"in": 3.0, "out": 15.0},
-    "claude-opus-4-8":   {"in": 15.0, "out": 75.0},
+    # 現行世代
+    "claude-opus-5-5":   {"in": 4.0,  "out": 20.0},
+    "claude-sonnet-5-5": {"in": 2.0,  "out": 10.0},
+    "claude-haiku-5-5":  {"in": 0.10, "out": 0.50},
+    # 一つ前の世代（いまの既定。まだ現役）
+    "claude-opus-4-8":   {"in": 5.0,  "out": 25.0},
+    "claude-sonnet-4-6": {"in": 3.0,  "out": 15.0},
+    "claude-haiku-4-5":  {"in": 1.0,  "out": 5.0},
+    # 過去のジョブが持っている日付つきID（記録の再計算用に残す）
     "claude-haiku-4-5-20251001": {"in": 1.0, "out": 5.0},
 }
 
-# Per-property token estimates (averaged from observed runs)
-_TOKEN_EST = {"in": 3000, "out": 5500}
+# 1プロパティあたりのトークン概算（実測ベース）。
+# 出力は 2026-11-26 に claude-sonnet-5-5 で実測して 9,941（入力 2,910）。
+# 現行世代は thinking が既定で有効になり、その分も出力に計上されるため、
+# 旧世代想定の 5,500 のままだと見積もりが実費の6割しか出ない。
+# 少なめに見せるより多めに見せる側へ倒す（請求が見積もりを超えないように）。
+_TOKEN_EST = {"in": 3000, "out": 10000}
 
 
 def estimate_cost(model: str, n_properties: int) -> dict:
-    p = _PRICING.get(model, _PRICING["claude-sonnet-4-6"])
+    p = _PRICING.get(model, _PRICING["claude-sonnet-5-5"])
     total_in = _TOKEN_EST["in"] * n_properties
     total_out = _TOKEN_EST["out"] * n_properties
     usd = (total_in / 1_000_000) * p["in"] + (total_out / 1_000_000) * p["out"]
@@ -92,6 +104,9 @@ def list_jobs(limit: int = 50) -> list[dict]:
                 "n_error": sum(1 for r in (j.get("results") or []) if r.get("error")),
                 "kind": j.get("kind", "manual"),
                 "label": j.get("label", ""),
+                # 一覧の「推定/実コスト」列で使う。実費は完了後にだけ入る。
+                "estimated_usd": (j.get("estimate") or {}).get("estimated_usd"),
+                "actual_usd": j.get("actual_usd"),
             })
         except Exception:
             continue
@@ -171,14 +186,58 @@ def _process(job_id: str) -> None:
 
     job["status"] = "done"
     job["finished_at"] = datetime.now(timezone.utc).isoformat()
-    p = _PRICING.get(job["model"], _PRICING["claude-sonnet-4-6"])
+    p = _PRICING.get(job["model"], _PRICING["claude-sonnet-5-5"])
     usd = (job["actual_tokens"]["in"] / 1_000_000) * p["in"] + (job["actual_tokens"]["out"] / 1_000_000) * p["out"]
     job["actual_usd"] = round(usd, 4)
     _save(job)
 
 
+def run_job(job_id: str) -> dict | None:
+    """ジョブを**同期で**最後まで実行し、終わったジョブを返す。
+
+    バッチ（auto_diagnose.py など、処理が終わればプロセスごと終了する経路）からは
+    必ずこちらを使う。start_job() のデーモンスレッドは呼び出し元プロセスの終了と
+    同時に殺されるので、バッチから呼ぶと**分析が始まる前に死んでジョブが queued の
+    まま残る**（2026-06〜11 に38件が滞留した原因）。
+    """
+    _process(job_id)
+    return _load(job_id)
+
+
 def start_job(job_id: str) -> None:
+    """ジョブを**別スレッドで**走らせる。サーバーのように生き続けるプロセス専用。
+
+    デーモンスレッドなので、呼び出し元プロセスが終わると分析も途中で止まる
+    （ジョブは running のまま残る）。プロセスが続かない経路では run_job() を使うこと。
+    """
     threading.Thread(target=_process, args=(job_id,), daemon=True).start()
+
+
+def stale_jobs() -> list[dict]:
+    """最後まで走らなかったジョブ（queued / running のまま残っているもの）。
+
+    サーバーの再起動やバッチの終了でスレッドが死ぬと、ジョブはこの状態で残る。
+    古いジョブを再実行すると、その分だけAI利用料がかかる点に注意。
+    """
+    out = []
+    for f in sorted(JOBS_DIR.glob("job_*.json")):
+        try:
+            job = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if job.get("status") in ("queued", "running"):
+            out.append(job)
+    out.sort(key=lambda j: str(j.get("started_at") or ""), reverse=True)
+    return out
+
+
+def discard_job(job_id: str) -> bool:
+    """ジョブの記録を削除する。滞留した古いジョブの掃除用。"""
+    path = JOBS_DIR / f"{job_id}.json"
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
 
 
 def select_properties_alerted(inv: dict, max_n: int = DEFAULT_MAX_BATCH) -> list[str]:
